@@ -3,10 +3,14 @@ import { Routes, Route } from 'react-router-dom'
 import PrototypePage from './pages/prototype/PrototypePage'
 import HomePage from './pages/HomePage'
 import NotFoundPage from './pages/NotFoundPage'
+import UnauthorizedPage from './pages/UnauthorizedPage'
+
+import ProtectedRoute from './components/auth/ProtectedRoute'
 
 import AuthLayout from './layouts/AuthLayout'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
 
 import CandidateLayout from './layouts/CandidateLayout'
 import CandidateOnboardingPage from './pages/candidate/CandidateOnboardingPage'
@@ -43,45 +47,53 @@ function App() {
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/prototype" element={<PrototypePage />} />
+      <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
       <Route path="/auth" element={<AuthLayout />}>
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
+        <Route path="forgot-password" element={<ForgotPasswordPage />} />
       </Route>
 
-      <Route path="/candidate" element={<CandidateLayout />}>
-        <Route index element={<CandidateHomePage />} />
-        <Route path="onboarding" element={<CandidateOnboardingPage />} />
-        <Route path="home" element={<CandidateHomePage />} />
-        <Route path="jobs" element={<CandidateJobsPage />} />
-        <Route path="jobs/:jobId" element={<CandidateJobDetailPage />} />
-        <Route path="applications" element={<CandidateApplicationsPage />} />
-        <Route path="saved-jobs" element={<CandidateSavedJobsPage />} />
-        <Route path="chat" element={<CandidateChatPage />} />
-        <Route path="interviews" element={<CandidateInterviewsPage />} />
-        <Route path="profile" element={<CandidateProfilePage />} />
+      <Route element={<ProtectedRoute allowedRoles={['candidate']} />}>
+        <Route path="/candidate" element={<CandidateLayout />}>
+          <Route index element={<CandidateHomePage />} />
+          <Route path="onboarding" element={<CandidateOnboardingPage />} />
+          <Route path="home" element={<CandidateHomePage />} />
+          <Route path="jobs" element={<CandidateJobsPage />} />
+          <Route path="jobs/:jobId" element={<CandidateJobDetailPage />} />
+          <Route path="applications" element={<CandidateApplicationsPage />} />
+          <Route path="saved-jobs" element={<CandidateSavedJobsPage />} />
+          <Route path="chat" element={<CandidateChatPage />} />
+          <Route path="interviews" element={<CandidateInterviewsPage />} />
+          <Route path="profile" element={<CandidateProfilePage />} />
+        </Route>
       </Route>
 
-      <Route path="/employer" element={<EmployerLayout />}>
-        <Route index element={<EmployerDashboardPage />} />
-        <Route path="company" element={<EmployerCompanyPage />} />
-        <Route path="jobs" element={<EmployerJobsPage />} />
-        <Route path="jobs/new" element={<EmployerJobNewPage />} />
-        <Route path="jobs/:jobId" element={<EmployerJobDetailPage />} />
-        <Route path="applications" element={<EmployerApplicationsPage />} />
-        <Route path="candidates" element={<EmployerCandidatesPage />} />
-        <Route path="interviews" element={<EmployerInterviewsPage />} />
-        <Route path="profile" element={<EmployerProfilePage />} />
+      <Route element={<ProtectedRoute allowedRoles={['employer']} />}>
+        <Route path="/employer" element={<EmployerLayout />}>
+          <Route index element={<EmployerDashboardPage />} />
+          <Route path="company" element={<EmployerCompanyPage />} />
+          <Route path="jobs" element={<EmployerJobsPage />} />
+          <Route path="jobs/new" element={<EmployerJobNewPage />} />
+          <Route path="jobs/:jobId" element={<EmployerJobDetailPage />} />
+          <Route path="applications" element={<EmployerApplicationsPage />} />
+          <Route path="candidates" element={<EmployerCandidatesPage />} />
+          <Route path="interviews" element={<EmployerInterviewsPage />} />
+          <Route path="profile" element={<EmployerProfilePage />} />
+        </Route>
       </Route>
 
-      <Route path="/admin" element={<AdminLayout />}>
-        <Route index element={<AdminDashboardPage />} />
-        <Route path="dashboard" element={<AdminDashboardPage />} />
-        <Route path="users" element={<AdminUsersPage />} />
-        <Route path="employers" element={<AdminEmployersPage />} />
-        <Route path="jobs" element={<AdminJobsPage />} />
-        <Route path="verifications" element={<AdminVerificationsPage />} />
-        <Route path="reports" element={<AdminReportsPage />} />
+      <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<AdminDashboardPage />} />
+          <Route path="dashboard" element={<AdminDashboardPage />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="employers" element={<AdminEmployersPage />} />
+          <Route path="jobs" element={<AdminJobsPage />} />
+          <Route path="verifications" element={<AdminVerificationsPage />} />
+          <Route path="reports" element={<AdminReportsPage />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<NotFoundPage />} />

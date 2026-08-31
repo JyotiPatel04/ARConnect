@@ -1,5 +1,7 @@
-import { Briefcase, Home, Search, ClipboardList, MessageCircle, User } from 'lucide-react'
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Briefcase, Home, Search, ClipboardList, MessageCircle, User, LogOut } from 'lucide-react'
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import useAuth from '../hooks/useAuth'
+import { getInitials } from '../lib/format'
 
 const navItems = [
   { to: '/candidate/home', label: 'Home', icon: Home },
@@ -10,6 +12,14 @@ const navItems = [
 ]
 
 function Header() {
+  const { profile, signOut } = useAuth()
+  const navigate = useNavigate()
+
+  async function handleSignOut() {
+    await signOut()
+    navigate('/', { replace: true })
+  }
+
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
@@ -21,12 +31,22 @@ function Header() {
             AR<span className="text-primary-600">Connect</span>
           </span>
         </Link>
-        <Link
-          to="/candidate/profile"
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-navy-900 text-[11px] font-bold text-white"
-        >
-          RK
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/candidate/profile"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-navy-900 text-[11px] font-bold text-white"
+          >
+            {getInitials(profile?.full_name) || <User size={14} />}
+          </Link>
+          <button
+            onClick={handleSignOut}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-navy-400 hover:bg-slate-100 hover:text-navy-700"
+            aria-label="Log out"
+            title="Log out"
+          >
+            <LogOut size={16} />
+          </button>
+        </div>
       </div>
     </header>
   )

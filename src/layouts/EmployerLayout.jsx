@@ -10,8 +10,11 @@ import {
   Bell,
   Menu,
   X,
+  LogOut,
 } from 'lucide-react'
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import useAuth from '../hooks/useAuth'
+import { getInitials } from '../lib/format'
 
 const navItems = [
   { to: '/employer', label: 'Dashboard', icon: LayoutGrid, end: true },
@@ -24,6 +27,14 @@ const navItems = [
 ]
 
 function SidebarContent({ onNavigate }) {
+  const { profile, signOut } = useAuth()
+  const navigate = useNavigate()
+
+  async function handleSignOut() {
+    await signOut()
+    navigate('/', { replace: true })
+  }
+
   return (
     <>
       <Link to="/employer" className="mb-6 flex items-center gap-2 px-2">
@@ -52,13 +63,25 @@ function SidebarContent({ onNavigate }) {
           </NavLink>
         ))}
       </nav>
-      <p className="px-2 text-[10.5px] font-semibold text-navy-400">ABC Pvt Ltd · Employer</p>
+      <div className="space-y-2 border-t border-slate-100 pt-3">
+        <p className="truncate px-2 text-[10.5px] font-semibold text-navy-400">
+          {profile?.full_name || 'Employer'} · Employer
+        </p>
+        <button
+          onClick={handleSignOut}
+          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-semibold text-navy-600 hover:bg-slate-100"
+        >
+          <LogOut size={16} strokeWidth={2.25} />
+          Log Out
+        </button>
+      </div>
     </>
   )
 }
 
 export default function EmployerLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { profile } = useAuth()
 
   return (
     <div className="min-h-screen bg-[#f4f5f9] lg:flex">
@@ -94,9 +117,12 @@ export default function EmployerLayout() {
           <span className="hidden text-sm font-bold text-navy-900 lg:block">Employer Portal</span>
           <div className="flex items-center gap-3">
             <Bell size={17} className="text-navy-400" />
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-navy-900 text-[10px] font-bold text-white">
-              AB
-            </div>
+            <Link
+              to="/employer/profile"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-navy-900 text-[10px] font-bold text-white"
+            >
+              {getInitials(profile?.full_name) || <UserCircle size={14} />}
+            </Link>
           </div>
         </header>
         <main className="flex-1 p-4 sm:p-6">
