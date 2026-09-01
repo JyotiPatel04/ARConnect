@@ -23,6 +23,16 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    // Reads the requester's OWN role off their users/{uid} doc. Only ever
+    // called with request.auth.uid, so this is just isOwner's read rule
+    // applied to the caller themselves — it doesn't let anyone read a
+    // DIFFERENT user's role, since a get() here still goes through no
+    // rule of its own (get()/exists() inside rules bypass rule evaluation
+    // by design, but the path is always the caller's own uid).
+    function callerRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
     // users/{uid} — one profile document per authenticated user.
     match /users/{userId} {
       allow read: if isOwner(userId);
@@ -45,9 +55,56 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Everything else (companies, jobs, applications, interviews, messages,
-    // notifications, reports, ...) is not implemented yet — default-deny
-    // until each collection gets its own rules in a later phase.
+    // jobs/{jobId} — public listings, owned by the employer who posted them.
+    match /jobs/{jobId} {
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && callerRole() == 'employer'
+        && request.resource.data.employerId == request.auth.uid;
+
+      allow update, delete: if isSignedIn()
+        && callerRole() == 'employer'
+        && resource.data.employerId == request.auth.uid;
+    }
+
+    // applications/{candidateId}_{jobId} — composite id makes the doc id
+    // itself the duplicate-application guard: a candidate can only ever
+    // create ONE document for a given (candidateId, jobId) pair, because
+    // Firestore doc ids are unique and this rule forces the id to encode
+    // exactly that pair.
+    match /applications/{applicationId} {
+      allow read: if isSignedIn() && resource.data.candidateId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.candidateId == request.auth.uid
+        && applicationId == request.auth.uid + '_' + request.resource.data.jobId
+        && request.resource.data.status == 'applied';
+
+      // No candidate-facing edit/withdraw in this phase, and this is also
+      // what makes candidateId/jobId/status permanently immutable after
+      // creation — there is no update path at all, for anyone, yet.
+      allow update, delete: if false;
+    }
+
+    // savedJobs/{candidateId}_{jobId} — same composite-id pattern as
+    // applications, for the same reason (structurally prevents duplicate
+    // saves of the same job by the same candidate).
+    match /savedJobs/{savedJobId} {
+      allow read: if isSignedIn() && resource.data.candidateId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.candidateId == request.auth.uid
+        && savedJobId == request.auth.uid + '_' + request.resource.data.jobId;
+
+      allow delete: if isSignedIn() && resource.data.candidateId == request.auth.uid;
+
+      allow update: if false;
+    }
+
+    // Everything else (companies, interviews, messages, notifications,
+    // reports, ...) is not implemented yet — default-deny until each
+    // collection gets its own rules in a later phase.
     match /{document=**} {
       allow read, write: if false;
     }

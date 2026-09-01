@@ -1,41 +1,105 @@
-import { Search, SlidersHorizontal, MapPin } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { Bookmark, SearchX, AlertCircle } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
 import JobCard from '../../components/ui/JobCard'
-import FilterChip from '../../components/ui/FilterChip'
+import EmptyState from '../../components/ui/EmptyState'
+import JobFilters from '../../components/candidate/JobFilters'
 import PageHeader from '../../components/PageHeader'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
-import { jobs } from '../../data/sampleData'
+import useJobs from '../../hooks/useJobs'
+import useSavedJobs from '../../hooks/useSavedJobs'
+import { filterAndSortJobs } from '../../lib/jobFilters'
+import { toJobCardProps } from '../../lib/format'
+
+const EMPTY_FILTERS = { location: '', jobType: '', workMode: '', experienceLevel: '', minSalary: null }
 
 export default function CandidateJobsPage() {
   useDocumentTitle('Search Jobs')
+  const { jobs, loading, error } = useJobs()
+  const { isSaved, saveJob, unsaveJob } = useSavedJobs()
+  const [searchParams] = useSearchParams()
+
+  const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState({
+    ...EMPTY_FILTERS,
+    jobType: searchParams.get('jobType') || '',
+  })
+
+  const activeCount = Object.values(filters).filter((v) => v !== '' && v != null).length
+
+  const results = useMemo(
+    () => filterAndSortJobs(jobs, { search, ...filters }),
+    [jobs, search, filters]
+  )
+
+  function handleFilterChange(key, value) {
+    setFilters((prev) => ({ ...prev, [key]: value }))
+  }
+
+  async function handleToggleSave(job) {
+    if (isSaved(job.id)) {
+      await unsaveJob(job.id)
+    } else {
+      await saveJob(job)
+    }
+  }
 
   return (
     <div>
-      <PageHeader title="Search Jobs" subtitle={`${jobs.length} jobs found near you`} />
+      <PageHeader
+        title="Search Jobs"
+        subtitle={loading ? 'Loading...' : `${results.length} of ${jobs.length} jobs`}
+        action={
+          <Link
+            to="/candidate/saved-jobs"
+            className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-navy-700"
+          >
+            <Bookmark size={13} /> Saved Jobs
+          </Link>
+        }
+      />
 
-      <div className="flex items-center gap-2">
-        <div className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 shadow-soft">
-          <Search size={16} className="text-navy-400" />
-          <span className="text-sm text-navy-400">Sales executive</span>
-        </div>
-        <button className="flex h-[42px] w-[42px] items-center justify-center rounded-xl bg-primary-600 text-white shadow-soft">
-          <SlidersHorizontal size={16} />
-        </button>
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <FilterChip label="Varanasi" active icon={MapPin} />
-        <FilterChip label="Full-time" />
-        <FilterChip label="₹15k–25k" />
-        <FilterChip label="Verified only" />
-      </div>
+      <JobFilters
+        search={search}
+        onSearchChange={setSearch}
+        filters={filters}
+        onFilterChange={handleFilterChange}
+        onClearFilters={() => setFilters(EMPTY_FILTERS)}
+        activeCount={activeCount}
+      />
 
       <div className="mt-4 space-y-3">
-        {jobs.map((job, i) => (
-          <Link key={job.title} to={`/candidate/jobs/${i}`}>
-            <JobCard job={job} compact />
-          </Link>
-        ))}
+        {loading && <p className="py-8 text-center text-sm text-navy-400">Loading jobs...</p>}
+
+        {!loading && error && (
+          <EmptyState
+            icon={AlertCircle}
+            tone="error"
+            title="Couldn't load jobs right now"
+            subtitle="Please check your connection and try again."
+          />
+        )}
+
+        {!loading && !error && results.length === 0 && (
+          <EmptyState
+            icon={SearchX}
+            title="No jobs match your search"
+            subtitle="Try adjusting your filters or search term."
+          />
+        )}
+
+        {!loading &&
+          !error &&
+          results.map((job) => (
+            <Link key={job.id} to={`/candidate/jobs/${job.id}`}>
+              <JobCard
+                job={toJobCardProps(job)}
+                compact
+                isSaved={isSaved(job.id)}
+                onToggleSave={() => handleToggleSave(job)}
+              />
+            </Link>
+          ))}
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 const styles = {
   applied: 'bg-slate-100 text-slate-600',
   review: 'bg-amber-50 text-amber-700',
+  reviewing: 'bg-amber-50 text-amber-700',
   shortlisted: 'bg-primary-50 text-primary-600',
   interview: 'bg-violet-50 text-violet-600',
   hired: 'bg-success-50 text-success-700',
@@ -11,6 +12,7 @@ const styles = {
 const labels = {
   applied: 'Applied',
   review: 'In Review',
+  reviewing: 'In Review',
   shortlisted: 'Shortlisted',
   interview: 'Interview',
   hired: 'Hired',

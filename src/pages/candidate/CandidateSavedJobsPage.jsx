@@ -1,33 +1,55 @@
-import { Bookmark } from 'lucide-react'
+import { Bookmark, AlertCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import JobCard from '../../components/ui/JobCard'
+import EmptyState from '../../components/ui/EmptyState'
 import PageHeader from '../../components/PageHeader'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
-import { jobs } from '../../data/sampleData'
-
-const saved = jobs.slice(0, 2)
+import useSavedJobs from '../../hooks/useSavedJobs'
+import { formatSalary } from '../../lib/format'
 
 export default function CandidateSavedJobsPage() {
   useDocumentTitle('Saved Jobs')
+  const { savedJobs, loading, error, unsaveJob } = useSavedJobs()
 
   return (
     <div>
-      <PageHeader title="Saved Jobs" subtitle={`${saved.length} jobs saved`} />
-      {saved.length > 0 ? (
+      <PageHeader title="Saved Jobs" subtitle={loading ? 'Loading...' : `${savedJobs.length} jobs saved`} />
+
+      {loading && <p className="py-8 text-center text-sm text-navy-400">Loading saved jobs...</p>}
+
+      {!loading && error && (
+        <EmptyState
+          icon={AlertCircle}
+          tone="error"
+          title="Couldn't load saved jobs"
+          subtitle="Please check your connection and try again."
+        />
+      )}
+
+      {!loading && !error && savedJobs.length === 0 && (
+        <EmptyState icon={Bookmark} title="No saved jobs yet." subtitle="Tap the bookmark icon on any job to save it here." />
+      )}
+
+      {!loading && !error && savedJobs.length > 0 && (
         <div className="space-y-3">
-          {saved.map((job) => {
-            const i = jobs.indexOf(job)
-            return (
-              <Link key={job.title} to={`/candidate/jobs/${i}`}>
-                <JobCard job={job} compact />
-              </Link>
-            )
-          })}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 py-12 text-center">
-          <Bookmark size={22} className="text-navy-300" />
-          <p className="text-sm text-navy-500">No saved jobs yet.</p>
+          {savedJobs.map((saved) => (
+            <Link key={saved.id} to={`/candidate/jobs/${saved.jobId}`}>
+              <JobCard
+                job={{
+                  title: saved.jobTitle,
+                  company: saved.companyName,
+                  salary: formatSalary(saved.salaryMin, saved.salaryMax),
+                  location: saved.location,
+                  type: '',
+                  posted: '',
+                  verified: Boolean(saved.employerVerified),
+                }}
+                compact
+                isSaved
+                onToggleSave={() => unsaveJob(saved.jobId)}
+              />
+            </Link>
+          ))}
         </div>
       )}
     </div>

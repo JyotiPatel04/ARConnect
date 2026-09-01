@@ -1,8 +1,8 @@
-import { MapPin, Briefcase } from 'lucide-react'
+import { MapPin, Briefcase, Bookmark } from 'lucide-react'
 import VerifiedBadge from './VerifiedBadge'
 import MatchBadge from './MatchBadge'
 
-export default function JobCard({ job, compact = false }) {
+export default function JobCard({ job, compact = false, isSaved, onToggleSave }) {
   return (
     <div
       className={`rounded-2xl border border-slate-100 bg-white shadow-soft ${
@@ -21,7 +21,25 @@ export default function JobCard({ job, compact = false }) {
             <p className="text-[12px] text-navy-500">{job.company}</p>
           </div>
         </div>
-        <MatchBadge value={job.match} />
+        <div className="flex shrink-0 items-center gap-1.5">
+          {job.match != null && <MatchBadge value={job.match} />}
+          {onToggleSave && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onToggleSave()
+              }}
+              aria-label={isSaved ? 'Unsave job' : 'Save job'}
+              className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                isSaved ? 'text-primary-600' : 'text-navy-300 hover:text-navy-500'
+              }`}
+            >
+              <Bookmark size={15} fill={isSaved ? 'currentColor' : 'none'} />
+            </button>
+          )}
+        </div>
       </div>
 
       <p className="mt-3 text-[15px] font-bold text-navy-900">{job.salary}</p>

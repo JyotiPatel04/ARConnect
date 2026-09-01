@@ -1,6 +1,9 @@
-export default function FilterChip({ label, active = false, icon: Icon }) {
+export default function FilterChip({ label, active = false, icon: Icon, onClick }) {
+  const Tag = onClick ? 'button' : 'span'
   return (
-    <span
+    <Tag
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
         active
           ? 'border-primary-600 bg-primary-600 text-white'
@@ -9,6 +12,6 @@ export default function FilterChip({ label, active = false, icon: Icon }) {
     >
       {Icon && <Icon size={12} strokeWidth={2.5} />}
       {label}
-    </span>
+    </Tag>
   )
 }
