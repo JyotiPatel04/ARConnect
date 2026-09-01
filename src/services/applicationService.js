@@ -1,4 +1,14 @@
-import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where } from 'firebase/firestore'
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  increment,
+  query,
+  serverTimestamp,
+  where,
+  writeBatch,
+} from 'firebase/firestore'
 import { db } from '../lib/firebase'
 
 const applicationsRef = collection(db, 'applications')
@@ -29,7 +39,12 @@ export async function applyToJob({ job, candidateId, candidateName, candidateEma
   const ref = doc(db, 'applications', id)
 
   try {
-    await setDoc(ref, {
+    // Batched so the application is created and the job's applicationCount
+    // is incremented atomically — that counter is what lets the employer
+    // delete rule guarantee "only when zero applications" server-side,
+    // not just as a client-side check.
+    const batch = writeBatch(db)
+    batch.set(ref, {
       candidateId,
       jobId: job.id,
       employerId: job.employerId,
@@ -41,6 +56,8 @@ export async function applyToJob({ job, candidateId, candidateName, candidateEma
       appliedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     })
+    batch.update(doc(db, 'jobs', job.id), { applicationCount: increment(1) })
+    await batch.commit()
   } catch (err) {
     // The security rules only permit *creating* this doc, never updating
     // it — so if it already exists, Firestore treats the write as an

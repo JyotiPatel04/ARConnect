@@ -30,7 +30,14 @@ service cloud.firestore {
     // rule of its own (get()/exists() inside rules bypass rule evaluation
     // by design, but the path is always the caller's own uid).
     function callerRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return callerProfile().role;
+    }
+
+    // Full profile of the caller (their own users/{uid} doc). Used to
+    // verify a candidate's applications carry their REAL name/email,
+    // never client-supplied free text impersonating someone else.
+    function callerProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
     // users/{uid} — one profile document per authenticated user.
@@ -55,17 +62,60 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Reads a job's real data for cross-checking against what a candidate's
+    // application claims about it (employerId, title, companyName) — closes
+    // off forging an application that impersonates a different employer's
+    // job than the one actually being applied to.
+    function jobFor(jobId) {
+      return get(/databases/$(database)/documents/jobs/$(jobId)).data;
+    }
+
     // jobs/{jobId} — public listings, owned by the employer who posted them.
     match /jobs/{jobId} {
       allow read: if true;
 
       allow create: if isSignedIn()
         && callerRole() == 'employer'
-        && request.resource.data.employerId == request.auth.uid;
+        && request.resource.data.employerId == request.auth.uid
+        && request.resource.data.applicationCount == 0;
 
-      allow update, delete: if isSignedIn()
+      allow update: if isSignedIn() && (
+        // The owning employer may change anything (title, salary, status,
+        // ...) EXCEPT employerId — ownership can never be reassigned, even
+        // by the current owner, even accidentally.
+        (
+          callerRole() == 'employer'
+          && resource.data.employerId == request.auth.uid
+          && request.resource.data.employerId == resource.data.employerId
+        )
+        ||
+        // The only other party ever allowed to touch a job document is a
+        // candidate applying to it — and the only thing they may do is
+        // bump applicationCount by exactly one, paired atomically (in the
+        // same batch) with creating their own applications/{id} doc. This
+        // is what makes "delete only if zero applications" a real,
+        // server-enforced guarantee below, not just a client-side check a
+        // malicious client could skip. employerId and status are checked
+        // explicitly immutable here (ownership can't be hijacked, lifecycle
+        // can't be silently flipped) rather than via a generic
+        // diff()/hasOnly() field-allowlist.
+        (
+          callerRole() == 'candidate'
+          && request.resource.data.applicationCount == resource.data.applicationCount + 1
+          && request.resource.data.employerId == resource.data.employerId
+          && request.resource.data.status == resource.data.status
+        )
+      );
+
+      // Hard delete only permitted once applicationCount is back to zero —
+      // preserves application history for any job that was ever applied
+      // to. The UI only ever offers Close for such jobs, but this is the
+      // actual enforcement: even a direct deleteDoc() call bypassing the
+      // UI is rejected the same way.
+      allow delete: if isSignedIn()
         && callerRole() == 'employer'
-        && resource.data.employerId == request.auth.uid;
+        && resource.data.employerId == request.auth.uid
+        && resource.data.applicationCount == 0;
     }
 
     // applications/{candidateId}_{jobId} — composite id makes the doc id
@@ -74,17 +124,49 @@ service cloud.firestore {
     // Firestore doc ids are unique and this rule forces the id to encode
     // exactly that pair.
     match /applications/{applicationId} {
-      allow read: if isSignedIn() && resource.data.candidateId == request.auth.uid;
+      allow read: if isSignedIn() && (
+        resource.data.candidateId == request.auth.uid ||
+        (callerRole() == 'employer' && resource.data.employerId == request.auth.uid)
+      );
 
+      // Every denormalized field here is verified against the real source
+      // document, not trusted from the client: employerId/jobTitle/
+      // companyName must match the actual job being applied to (so a
+      // candidate can never forge an application that shows up in a
+      // DIFFERENT employer's inbox than the job they really applied to),
+      // and candidateName/candidateEmail must match the applicant's own
+      // profile (so an employer can never be shown a spoofed identity).
       allow create: if isSignedIn()
         && request.resource.data.candidateId == request.auth.uid
         && applicationId == request.auth.uid + '_' + request.resource.data.jobId
-        && request.resource.data.status == 'applied';
+        && request.resource.data.status == 'applied'
+        && request.resource.data.employerId == jobFor(request.resource.data.jobId).employerId
+        && request.resource.data.jobTitle == jobFor(request.resource.data.jobId).title
+        && request.resource.data.companyName == jobFor(request.resource.data.jobId).companyName
+        && request.resource.data.candidateName == callerProfile().full_name
+        && request.resource.data.candidateEmail == callerProfile().email;
 
-      // No candidate-facing edit/withdraw in this phase, and this is also
-      // what makes candidateId/jobId/status permanently immutable after
-      // creation — there is no update path at all, for anyone, yet.
-      allow update, delete: if false;
+      // The owning employer may change status (+ updatedAt) — every other
+      // field, including candidateId/jobId/employerId, is checked
+      // explicitly immutable here (rather than via a generic
+      // diff()/hasOnly() field-allowlist), so they can never be touched by
+      // anyone, including the owning employer. Candidates have no update
+      // path at all, so they can never touch their own application's
+      // status either.
+      allow update: if isSignedIn()
+        && callerRole() == 'employer'
+        && resource.data.employerId == request.auth.uid
+        && request.resource.data.status in ['applied', 'reviewing', 'shortlisted', 'interview', 'rejected', 'hired']
+        && request.resource.data.candidateId == resource.data.candidateId
+        && request.resource.data.jobId == resource.data.jobId
+        && request.resource.data.employerId == resource.data.employerId
+        && request.resource.data.candidateName == resource.data.candidateName
+        && request.resource.data.candidateEmail == resource.data.candidateEmail
+        && request.resource.data.jobTitle == resource.data.jobTitle
+        && request.resource.data.companyName == resource.data.companyName
+        && request.resource.data.appliedAt == resource.data.appliedAt;
+
+      allow delete: if false;
     }
 
     // savedJobs/{candidateId}_{jobId} — same composite-id pattern as

@@ -101,9 +101,20 @@ export default function CandidateJobDetailPage() {
       </div>
 
       <div className="mt-4 flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-50 text-base font-bold text-primary-600">
-          {job.companyName?.charAt(0)}
-        </div>
+        {job.companyLogoUrl ? (
+          <img
+            src={job.companyLogoUrl}
+            alt={job.companyName}
+            className="h-12 w-12 shrink-0 rounded-xl object-cover"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none'
+            }}
+          />
+        ) : (
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-base font-bold text-primary-600">
+            {job.companyName?.charAt(0)}
+          </div>
+        )}
         <div>
           <h1 className="text-base font-extrabold text-navy-900">{job.title}</h1>
           <p className="text-xs text-navy-500">{job.companyName}</p>
