@@ -184,6 +184,37 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // candidateProfiles/{uid} — matching-relevant profile data (skills,
+    // experience, location, preferences). Kept as its own collection
+    // rather than added to users/{uid}, which every phase so far has left
+    // untouched — this is genuinely new data, not an extension of auth
+    // identity basics.
+    match /candidateProfiles/{userId} {
+      allow read: if isOwner(userId);
+
+      allow create, update: if isOwner(userId)
+        && request.resource.data.candidateId == userId;
+
+      allow delete: if false;
+    }
+
+    // matches/{candidateId}_{jobId} — AI match results. No client write
+    // path exists here at all, for anyone, ever: create/update/delete are
+    // unconditionally false. Only the computeMatch Cloud Function (Admin
+    // SDK, which bypasses these rules entirely) ever writes this
+    // collection. That's what makes "client cannot create a fake score,
+    // modify a score, modify an explanation, or touch someone else's
+    // match" a structural impossibility rather than a policy this file
+    // has to carefully enforce.
+    match /matches/{matchId} {
+      allow read: if isSignedIn() && (
+        resource.data.candidateId == request.auth.uid ||
+        (callerRole() == 'employer' && resource.data.employerId == request.auth.uid)
+      );
+
+      allow create, update, delete: if false;
+    }
+
     // Everything else (companies, interviews, messages, notifications,
     // reports, ...) is not implemented yet — default-deny until each
     // collection gets its own rules in a later phase.

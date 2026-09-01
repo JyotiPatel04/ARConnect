@@ -1,4 +1,6 @@
+import { Sparkles } from 'lucide-react'
 import { APPLICATION_STATUSES } from '../../services/employerApplicationService'
+import useJobMatch from '../../hooks/useJobMatch'
 import { formatRelativeTime } from '../../lib/format'
 
 const STATUS_LABELS = {
@@ -11,10 +13,22 @@ const STATUS_LABELS = {
 }
 
 export default function ApplicationRow({ application, onStatusChange, updating, showJobTitle = true }) {
+  const { match, loading: matchLoading } = useJobMatch(application.jobId, application.candidateId)
+
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-slate-100 bg-white p-3.5 shadow-soft sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <p className="text-[13px] font-bold text-navy-900">{application.candidateName}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-[13px] font-bold text-navy-900">{application.candidateName}</p>
+          {!matchLoading && match?.score != null && (
+            <span
+              title={match.explanation}
+              className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-[10.5px] font-bold text-primary-600"
+            >
+              <Sparkles size={10} /> {match.score}% match
+            </span>
+          )}
+        </div>
         <p className="text-xs text-navy-500">{application.candidateEmail}</p>
         <p className="mt-0.5 text-[11px] text-navy-400">
           {showJobTitle && `${application.jobTitle} · `}

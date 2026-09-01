@@ -5,8 +5,10 @@ import VerifiedBadge from '../../components/ui/VerifiedBadge'
 import StatusBadge from '../../components/ui/StatusBadge'
 import Button from '../../components/ui/Button'
 import EmptyState from '../../components/ui/EmptyState'
+import MatchScoreCard from '../../components/shared/MatchScoreCard'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import useJob from '../../hooks/useJob'
+import useJobMatch from '../../hooks/useJobMatch'
 import useMyApplications from '../../hooks/useMyApplications'
 import useSavedJobs from '../../hooks/useSavedJobs'
 import { formatSalary, formatRelativeTime } from '../../lib/format'
@@ -14,6 +16,7 @@ import { formatSalary, formatRelativeTime } from '../../lib/format'
 export default function CandidateJobDetailPage() {
   const { jobId } = useParams()
   const { job, loading, error } = useJob(jobId)
+  const { match, loading: matchLoading, error: matchError } = useJobMatch(jobId)
   const { hasApplied, getApplication, applyToJob } = useMyApplications()
   const { isSaved, saveJob, unsaveJob } = useSavedJobs()
 
@@ -136,6 +139,10 @@ export default function CandidateJobDetailPage() {
         </p>
       )}
       <p className="mt-1 text-[11px] text-navy-400">Posted {formatRelativeTime(job.createdAt?.toDate?.())}</p>
+
+      <div className="mt-4">
+        <MatchScoreCard match={match} loading={matchLoading} error={matchError} />
+      </div>
 
       {job.skills?.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-1.5">
