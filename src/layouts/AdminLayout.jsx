@@ -3,7 +3,9 @@ import {
   Briefcase,
   LayoutGrid,
   Users,
+  GraduationCap,
   Building2,
+  ClipboardList,
   ShieldCheck,
   BarChart3,
   Bell,
@@ -18,8 +20,10 @@ import { getInitials } from '../lib/format'
 const navItems = [
   { to: '/admin', label: 'Dashboard', icon: LayoutGrid, end: true },
   { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/candidates', label: 'Candidates', icon: GraduationCap },
   { to: '/admin/employers', label: 'Employers', icon: Building2 },
   { to: '/admin/jobs', label: 'Jobs', icon: Briefcase },
+  { to: '/admin/applications', label: 'Applications', icon: ClipboardList },
   { to: '/admin/verifications', label: 'Verifications', icon: ShieldCheck },
   { to: '/admin/reports', label: 'Reports', icon: BarChart3 },
 ]

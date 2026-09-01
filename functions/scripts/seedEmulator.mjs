@@ -71,10 +71,37 @@ async function main() {
     updated_at: new Date(),
   })
 
+  const applicationId = `${candidate.uid}_emulator-seed-job-01`
+  await db.doc(`applications/${applicationId}`).set({
+    candidateId: candidate.uid,
+    candidateName: 'Emulator Test Candidate',
+    candidateEmail: candidate.email,
+    jobId: 'emulator-seed-job-01',
+    employerId: employer.uid,
+    jobTitle: 'Sales Executive',
+    companyName: 'Emulator Test Co',
+    status: 'applied',
+    appliedAt: new Date(),
+  })
+  await jobRef.update({ applicationCount: 1 })
+
+  const admin = await upsertAuthUser('emulator-admin@example.com', 'TestPass123!')
+  await db.doc(`users/${admin.uid}`).set({
+    full_name: 'Emulator Test Admin',
+    email: admin.email,
+    role: 'admin',
+    phone: null,
+    avatar_url: null,
+    created_at: new Date(),
+    updated_at: new Date(),
+  })
+
   console.log('Seeded emulator fixtures:')
   console.log('  employer uid:', employer.uid)
   console.log('  candidate uid:', candidate.uid)
+  console.log('  admin uid:', admin.uid)
   console.log('  job id: emulator-seed-job-01')
+  console.log('  application id:', applicationId)
 }
 
 main().then(() => process.exit(0))

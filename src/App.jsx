@@ -37,8 +37,10 @@ import EmployerProfilePage from './pages/employer/EmployerProfilePage'
 import AdminLayout from './layouts/AdminLayout'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
+import AdminCandidatesPage from './pages/admin/AdminCandidatesPage'
 import AdminEmployersPage from './pages/admin/AdminEmployersPage'
 import AdminJobsPage from './pages/admin/AdminJobsPage'
+import AdminApplicationsPage from './pages/admin/AdminApplicationsPage'
 import AdminVerificationsPage from './pages/admin/AdminVerificationsPage'
 import AdminReportsPage from './pages/admin/AdminReportsPage'
 
@@ -89,8 +91,10 @@ function App() {
           <Route index element={<AdminDashboardPage />} />
           <Route path="dashboard" element={<AdminDashboardPage />} />
           <Route path="users" element={<AdminUsersPage />} />
+          <Route path="candidates" element={<AdminCandidatesPage />} />
           <Route path="employers" element={<AdminEmployersPage />} />
           <Route path="jobs" element={<AdminJobsPage />} />
+          <Route path="applications" element={<AdminApplicationsPage />} />
           <Route path="verifications" element={<AdminVerificationsPage />} />
           <Route path="reports" element={<AdminReportsPage />} />
         </Route>

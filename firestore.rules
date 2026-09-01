@@ -42,7 +42,14 @@ service cloud.firestore {
 
     // users/{uid} — one profile document per authenticated user.
     match /users/{userId} {
-      allow read: if isOwner(userId);
+      // Admins can read any user's profile — Phase 5's Users/Candidates/
+      // Employers pages need this. callerRole() is the same trusted,
+      // server-verified read used everywhere else in this file: it reads
+      // the CALLER's own users/{uid}.role, which the create/update rules
+      // just below make immutable to anything but 'candidate'/'employer'
+      // at signup — there is no client path that ever sets it to 'admin',
+      // so this OR-clause can never be satisfied by a self-declared claim.
+      allow read: if isOwner(userId) || callerRole() == 'admin';
 
       // Only ever created by the client immediately after signup, for
       // themselves, and only ever as 'candidate' or 'employer' — 'admin'
@@ -124,9 +131,13 @@ service cloud.firestore {
     // Firestore doc ids are unique and this rule forces the id to encode
     // exactly that pair.
     match /applications/{applicationId} {
+      // Admins can read any application — Phase 5's Applications page (and
+      // the per-employer job counts on the Employers page) need this. Same
+      // callerRole()-based trust as the users/{uid} admin read above.
       allow read: if isSignedIn() && (
         resource.data.candidateId == request.auth.uid ||
-        (callerRole() == 'employer' && resource.data.employerId == request.auth.uid)
+        (callerRole() == 'employer' && resource.data.employerId == request.auth.uid) ||
+        callerRole() == 'admin'
       );
 
       // Every denormalized field here is verified against the real source
