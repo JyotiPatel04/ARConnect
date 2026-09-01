@@ -1,8 +1,12 @@
 export default function FormField({ label, type = 'text', value, onChange, placeholder, required, autoComplete }) {
+  const id = `field-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
   return (
     <div>
-      <label className="text-[11px] font-bold text-navy-700">{label}</label>
+      <label htmlFor={id} className="text-[11px] font-bold text-navy-700">
+        {label}
+      </label>
       <input
+        id={id}
         type={type}
         value={value}
         onChange={onChange}

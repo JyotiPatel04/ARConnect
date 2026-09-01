@@ -1,5 +1,4 @@
 import { Mail, Phone, LogOut } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
 import PageHeader from '../../components/PageHeader'
 import useAuth from '../../hooks/useAuth'
@@ -9,11 +8,10 @@ import { getInitials } from '../../lib/format'
 export default function EmployerProfilePage() {
   useDocumentTitle('Profile')
   const { profile, user, signOut } = useAuth()
-  const navigate = useNavigate()
 
+  // See CandidateProfilePage — ProtectedRoute reacts to sign-out itself.
   async function handleSignOut() {
     await signOut()
-    navigate('/', { replace: true })
   }
 
   return (

@@ -1,5 +1,4 @@
 import { Phone, Mail, Pencil, FileText, LogOut } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
 import useAuth from '../../hooks/useAuth'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
@@ -8,11 +7,14 @@ import { getInitials } from '../../lib/format'
 export default function CandidateProfilePage() {
   useDocumentTitle('Profile')
   const { profile, user, signOut } = useAuth()
-  const navigate = useNavigate()
 
+  // No explicit navigate() here — signing out clears the session, and
+  // ProtectedRoute reacts to that itself and redirects to /auth/login.
+  // An explicit navigate('/') here used to race that reactive redirect
+  // and lose every time, which is why this doesn't try to pick the
+  // destination itself.
   async function handleSignOut() {
     await signOut()
-    navigate('/', { replace: true })
   }
 
   return (

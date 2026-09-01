@@ -11,7 +11,7 @@ import {
   X,
   LogOut,
 } from 'lucide-react'
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 import useAuth from '../hooks/useAuth'
 import { getInitials } from '../lib/format'
 
@@ -26,11 +26,11 @@ const navItems = [
 
 function SidebarContent({ onNavigate }) {
   const { profile, signOut } = useAuth()
-  const navigate = useNavigate()
 
+  // ProtectedRoute reacts to sign-out itself and redirects to /auth/login —
+  // an explicit navigate('/') here used to race that and lose every time.
   async function handleSignOut() {
     await signOut()
-    navigate('/', { replace: true })
   }
 
   return (
