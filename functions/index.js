@@ -1,12 +1,22 @@
 import { initializeApp } from 'firebase-admin/app'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
+import { defineSecret } from 'firebase-functions/params'
 import { computeScore } from './src/matching/scoreCandidate.js'
 import { computeInputHash } from './src/matching/inputHash.js'
 import { generateExplanation } from './src/matching/explanation.js'
 
 initializeApp()
 const db = getFirestore()
+
+// Declaring this secret does NOT fetch it, expose it, or make it live by
+// itself — it only takes effect the next time computeMatch is actually
+// deployed with `secrets: [anthropicApiKey]` bound (below), and only if
+// the secret has also been created in Secret Manager first (see
+// functions/SECRET_SETUP.md). Until both of those happen, this line is a
+// no-op: process.env.ANTHROPIC_API_KEY stays undefined, exactly as it was
+// before this line existed.
+const anthropicApiKey = defineSecret('ANTHROPIC_API_KEY')
 
 const DAILY_COMPUTE_LIMIT = 100
 
@@ -40,7 +50,7 @@ async function checkAndIncrementRateLimit(uid) {
  * own match); an employer may pass a specific candidateId to view a
  * ranked applicant's match, but only for a job they actually own.
  */
-export const computeMatch = onCall(async (request) => {
+export const computeMatch = onCall({ secrets: [anthropicApiKey] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'You must be signed in.')
   }

@@ -1,8 +1,9 @@
-// Phase 4 constraint: no real Anthropic API key or SDK call yet. This file
-// is deliberately structured so that swapping the stub for a real
-// `anthropic.messages.create(...)` call later touches only
-// callClaudeStub's body — generateExplanation's contract (try AI, fall
-// back to the template on any failure) does not change.
+// generateExplanation()'s contract (try AI, fall back to the template on
+// any failure) never changes: which AI path it tries — the real Claude
+// call or the free/offline stub — is decided once, by whether
+// ANTHROPIC_API_KEY is actually populated in this process's environment.
+// See claudeClient.js for exactly when that becomes true.
+import { callClaudeReal, isRealClaudeConfigured } from './claudeClient.js'
 
 const FACTOR_LABELS = {
   skills: 'required skills',
@@ -62,12 +63,15 @@ export async function callClaudeStub({ score, breakdown, jobTitle, companyName }
 }
 
 /**
- * @returns {Promise<{ text: string, source: 'claude-stub' | 'fallback-template' }>}
+ * @returns {Promise<{ text: string, source: 'claude' | 'claude-stub' | 'fallback-template' }>}
  */
 export async function generateExplanation({ score, breakdown, jobTitle, companyName }) {
+  const useReal = isRealClaudeConfigured()
   try {
-    const text = await callClaudeStub({ score, breakdown, jobTitle, companyName })
-    return { text, source: 'claude-stub' }
+    const text = useReal
+      ? await callClaudeReal({ score, breakdown, jobTitle, companyName })
+      : await callClaudeStub({ score, breakdown, jobTitle, companyName })
+    return { text, source: useReal ? 'claude' : 'claude-stub' }
   } catch {
     return { text: templateExplanation(score, breakdown), source: 'fallback-template' }
   }

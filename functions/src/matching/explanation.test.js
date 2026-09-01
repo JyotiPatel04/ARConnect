@@ -1,6 +1,7 @@
 import { test, describe, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { templateExplanation, generateExplanation } from './explanation.js'
+import { isRealClaudeConfigured } from './claudeClient.js'
 import { computeScore } from './scoreCandidate.js'
 
 const profile = {
@@ -42,9 +43,28 @@ describe('templateExplanation', () => {
   })
 })
 
+// Pure gating-logic check — no network call, no key. Confirms the switch
+// generateExplanation uses to pick real Claude vs. the stub is driven
+// entirely by whether ANTHROPIC_API_KEY is present in the environment,
+// which stays unset in this test run, the emulator, and every environment
+// until a future secret-bound deploy the user hasn't approved yet.
+describe('isRealClaudeConfigured', () => {
+  test('false when ANTHROPIC_API_KEY is not set (the case in every environment today)', () => {
+    delete process.env.ANTHROPIC_API_KEY
+    assert.equal(isRealClaudeConfigured(), false)
+  })
+
+  test('true once ANTHROPIC_API_KEY is present — proves the gate reads live env state, not a cached flag', () => {
+    process.env.ANTHROPIC_API_KEY = 'test-value-for-gating-check-only-not-a-real-key'
+    assert.equal(isRealClaudeConfigured(), true)
+    delete process.env.ANTHROPIC_API_KEY
+  })
+})
+
 describe('generateExplanation — Claude availability', () => {
-  test('when the stub succeeds, source is "claude-stub"', async () => {
+  test('when ANTHROPIC_API_KEY is unset, the stub path is used and source is "claude-stub"', async () => {
     delete process.env.SIMULATE_CLAUDE_FAILURE
+    delete process.env.ANTHROPIC_API_KEY
     const { score, breakdown } = computeScore(profile, job)
     const result = await generateExplanation({ score, breakdown, jobTitle: job.jobTitle, companyName: 'ABC Pvt Ltd' })
     assert.equal(result.source, 'claude-stub')
