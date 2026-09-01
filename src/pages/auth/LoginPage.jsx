@@ -5,7 +5,8 @@ import FormField from '../../components/auth/FormField'
 import AuthAlert from '../../components/auth/AuthAlert'
 import useAuth from '../../hooks/useAuth'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
-import { supabase, isSupabaseConfigured } from '../../lib/supabase'
+import { db, isFirebaseConfigured } from '../../lib/firebase'
+import { doc, getDoc } from 'firebase/firestore'
 import { mapAuthError, roleRedirects } from '../../lib/authErrors'
 
 export default function LoginPage() {
@@ -25,18 +26,13 @@ export default function LoginPage() {
     setError('')
     setSubmitting(true)
     try {
-      const { user } = await signIn({ email, password })
+      const user = await signIn({ email, password })
 
       // Fetch the authoritative role directly rather than reading it off
       // AuthContext, whose state updates asynchronously via the auth
       // listener and could still be stale on this exact tick.
-      const { data: profileRow } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      const actualRole = profileRow?.role
+      const profileSnap = await getDoc(doc(db, 'users', user.uid))
+      const actualRole = profileSnap.exists() ? profileSnap.data().role : undefined
       const from = location.state?.from?.pathname
       navigate(from || roleRedirects[actualRole] || '/', { replace: true })
     } catch (err) {
@@ -51,11 +47,11 @@ export default function LoginPage() {
       <h1 className="text-lg font-bold text-navy-900">Welcome back</h1>
       <p className="mt-1 text-sm text-navy-500">Log in to continue to ARConnect.</p>
 
-      {!isSupabaseConfigured && (
+      {!isFirebaseConfigured && (
         <div className="mt-4">
           <AuthAlert type="error">
-            Supabase isn&apos;t configured yet — add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
-            to .env to enable login.
+            Firebase isn&apos;t configured yet — add the VITE_FIREBASE_* keys to .env to enable
+            login.
           </AuthAlert>
         </div>
       )}
@@ -109,7 +105,7 @@ export default function LoginPage() {
           </Link>
         </div>
 
-        <Button type="submit" className="w-full" disabled={submitting || !isSupabaseConfigured}>
+        <Button type="submit" className="w-full" disabled={submitting || !isFirebaseConfigured}>
           {submitting ? 'Logging in...' : 'Log In'}
         </Button>
       </form>

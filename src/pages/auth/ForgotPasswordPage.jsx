@@ -5,7 +5,7 @@ import FormField from '../../components/auth/FormField'
 import AuthAlert from '../../components/auth/AuthAlert'
 import useAuth from '../../hooks/useAuth'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
-import { isSupabaseConfigured } from '../../lib/supabase'
+import { isFirebaseConfigured } from '../../lib/firebase'
 import { mapAuthError } from '../../lib/authErrors'
 
 export default function ForgotPasswordPage() {
@@ -38,11 +38,11 @@ export default function ForgotPasswordPage() {
         Enter your email and we&apos;ll send you a link to reset your password.
       </p>
 
-      {!isSupabaseConfigured && (
+      {!isFirebaseConfigured && (
         <div className="mt-4">
           <AuthAlert type="error">
-            Supabase isn&apos;t configured yet — add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
-            to .env to enable password reset.
+            Firebase isn&apos;t configured yet — add the VITE_FIREBASE_* keys to .env to enable
+            password reset.
           </AuthAlert>
         </div>
       )}
@@ -65,7 +65,7 @@ export default function ForgotPasswordPage() {
             required
             autoComplete="email"
           />
-          <Button type="submit" className="w-full" disabled={submitting || !isSupabaseConfigured}>
+          <Button type="submit" className="w-full" disabled={submitting || !isFirebaseConfigured}>
             {submitting ? 'Sending...' : 'Send Reset Link'}
           </Button>
         </form>

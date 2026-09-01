@@ -1,17 +1,18 @@
+const messagesByCode = {
+  'auth/invalid-credential': 'Incorrect email or password.',
+  'auth/wrong-password': 'Incorrect email or password.',
+  'auth/user-not-found': 'Incorrect email or password.',
+  'auth/invalid-email': 'That email address looks invalid.',
+  'auth/email-already-in-use': 'This email is already registered. Try logging in instead.',
+  'auth/weak-password': 'Password must be at least 6 characters.',
+  'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
+  'auth/network-request-failed': 'Network error. Check your connection and try again.',
+  'auth/user-disabled': 'This account has been disabled.',
+}
+
 export function mapAuthError(error) {
-  const message = error?.message || ''
-
-  if (/invalid login credentials/i.test(message)) return 'Incorrect email or password.'
-  if (/email not confirmed/i.test(message)) return 'Please confirm your email before logging in.'
-  if (/already registered|already exists|user already/i.test(message)) {
-    return 'This email is already registered. Try logging in instead.'
-  }
-  if (/password.*(at least|should be|characters)/i.test(message)) {
-    return message
-  }
-  if (/rate limit/i.test(message)) return 'Too many attempts. Please wait a moment and try again.'
-
-  return message || 'Something went wrong. Please try again.'
+  const code = error?.code || ''
+  return messagesByCode[code] || error?.message || 'Something went wrong. Please try again.'
 }
 
 export const roleRedirects = {

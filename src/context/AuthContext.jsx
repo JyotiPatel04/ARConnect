@@ -1,97 +1,95 @@
 import { useCallback, useEffect, useState } from 'react'
-import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  updateProfile as updateAuthProfile,
+} from 'firebase/auth'
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { auth, db, isFirebaseConfigured } from '../lib/firebase'
 import { AuthContext } from './auth-context'
 
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null)
+  const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
-  const [loading, setLoading] = useState(isSupabaseConfigured)
+  const [loading, setLoading] = useState(isFirebaseConfigured)
 
-  const fetchProfile = useCallback(async (userId) => {
-    if (!userId) {
+  const fetchProfile = useCallback(async (uid) => {
+    if (!uid) {
       setProfile(null)
       return
     }
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle()
-
-    if (error) {
-      console.error('[auth] failed to load profile', error)
+    try {
+      const snap = await getDoc(doc(db, 'users', uid))
+      setProfile(snap.exists() ? snap.data() : null)
+    } catch (err) {
+      console.error('[auth] failed to load profile', err)
       setProfile(null)
-    } else {
-      setProfile(data)
     }
   }, [])
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
+    if (!isFirebaseConfigured) {
       return
     }
 
-    let active = true
-
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!active) return
-      setSession(data.session)
-      await fetchProfile(data.session?.user?.id)
-      if (active) setLoading(false)
-    })
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
-      if (!active) return
-      setSession(nextSession)
-      await fetchProfile(nextSession?.user?.id)
+    const unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
+      setUser(nextUser)
+      await fetchProfile(nextUser?.uid)
       setLoading(false)
     })
 
-    return () => {
-      active = false
-      subscription.unsubscribe()
-    }
+    return unsubscribe
   }, [fetchProfile])
 
   const signUp = useCallback(async ({ email, password, fullName, role, phone }) => {
-    const { data, error } = await supabase.auth.signUp({
+    const credential = await createUserWithEmailAndPassword(auth, email, password)
+
+    // Defense in depth: Firestore security rules are the real enforcement,
+    // but never trust an out-of-whitelist role this far either — 'admin'
+    // (or anything else) silently becomes 'candidate'.
+    const safeRole = role === 'employer' ? 'employer' : 'candidate'
+
+    await setDoc(doc(db, 'users', credential.user.uid), {
+      full_name: fullName || '',
       email,
-      password,
-      options: {
-        data: { full_name: fullName, role, phone: phone || null },
-      },
+      role: safeRole,
+      phone: phone || null,
+      avatar_url: null,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
     })
-    if (error) throw error
-    return data
+
+    if (fullName) {
+      updateAuthProfile(credential.user, { displayName: fullName }).catch(() => {})
+    }
+
+    return credential.user
   }, [])
 
   const signIn = useCallback(async ({ email, password }) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw error
-    return data
+    const credential = await signInWithEmailAndPassword(auth, email, password)
+    return credential.user
   }, [])
 
   const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
+    await firebaseSignOut(auth)
   }, [])
 
   const resetPassword = useCallback(async (email) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/login`,
+    await sendPasswordResetEmail(auth, email, {
+      url: `${window.location.origin}/auth/login`,
     })
-    if (error) throw error
   }, [])
 
   const value = {
-    session,
-    user: session?.user ?? null,
+    user,
     profile,
     role: profile?.role ?? null,
     loading,
-    isSupabaseConfigured,
+    isFirebaseConfigured,
     signUp,
     signIn,
     signOut,

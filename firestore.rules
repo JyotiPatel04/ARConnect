@@ -1,0 +1,55 @@
+rules_version = '2';
+
+// ARConnect — Firestore Security Rules
+//
+// Paste this into Firebase Console → Firestore Database → Rules → Publish
+// (or `firebase deploy --only firestore:rules` if you use the CLI).
+//
+// This is the Firestore-native equivalent of what a Postgres RLS policy +
+// trigger would do: users can only ever read or update their own profile
+// document, can never set their own role to 'admin' (or change role at all
+// once created), and can never delete it. Every other collection is
+// default-denied until a later phase defines rules for it — nothing in
+// this app should be readable/writable until it's explicitly allowed here.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // users/{uid} — one profile document per authenticated user.
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+
+      // Only ever created by the client immediately after signup, for
+      // themselves, and only ever as 'candidate' or 'employer' — 'admin'
+      // can never be set this way, no matter what the client sends.
+      allow create: if isOwner(userId)
+        && request.resource.data.role in ['candidate', 'employer'];
+
+      // Any other field (full_name, phone, avatar_url, ...) may be updated
+      // by the owner, but role must stay exactly what it already was —
+      // this is what makes privilege escalation from the browser
+      // impossible. To promote a user to admin, edit the document directly
+      // in the Firebase Console (which runs with full access, bypassing
+      // these rules) — there is deliberately no client-facing way to do it.
+      allow update: if isOwner(userId)
+        && request.resource.data.role == resource.data.role;
+
+      allow delete: if false;
+    }
+
+    // Everything else (companies, jobs, applications, interviews, messages,
+    // notifications, reports, ...) is not implemented yet — default-deny
+    // until each collection gets its own rules in a later phase.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
