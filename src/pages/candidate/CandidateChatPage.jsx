@@ -12,7 +12,7 @@ export default function CandidateChatPage() {
 
   return (
     <div>
-      <PageHeader title="Chat" subtitle="Conversations with recruiters" />
+      <PageHeader title="Chat" subtitle="Coming Soon — preview of what recruiter chat will look like" />
       <div className="space-y-2">
         {threads.map((t) => (
           <div
