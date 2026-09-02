@@ -38,10 +38,19 @@ export default function useEmployerApplications() {
 
   const refetch = useCallback(() => setReloadKey((k) => k + 1), [])
 
-  const updateStatus = useCallback(async (applicationId, status) => {
-    await updateApplicationStatus(applicationId, status)
-    setApplications((prev) => prev.map((a) => (a.id === applicationId ? { ...a, status } : a)))
-  }, [])
+  // Looks the application up from already-loaded state rather than
+  // re-fetching it — this is also what lets a same-status save become a
+  // true no-op (no write, no notification) instead of relying on the
+  // native <select>'s onChange to never fire for an unchanged value.
+  const updateStatus = useCallback(
+    async (applicationId, status) => {
+      const current = applications.find((a) => a.id === applicationId)
+      if (!current || current.status === status) return
+      await updateApplicationStatus(current, status)
+      setApplications((prev) => prev.map((a) => (a.id === applicationId ? { ...a, status } : a)))
+    },
+    [applications]
+  )
 
   const forJob = useCallback((jobId) => applications.filter((a) => a.jobId === jobId), [applications])
 

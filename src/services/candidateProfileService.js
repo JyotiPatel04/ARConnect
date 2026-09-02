@@ -1,5 +1,6 @@
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
+import { calculateProfileCompletion } from '../lib/profileCompletion'
 
 export async function getMyProfile(uid) {
   const snap = await getDoc(doc(db, 'candidateProfiles', uid))
@@ -16,8 +17,6 @@ export async function getMyProfile(uid) {
 export async function upsertMyProfile(uid, data) {
   const ref = doc(db, 'candidateProfiles', uid)
   const existing = await getDoc(ref)
-
-  const profileComplete = Boolean(data.skills?.length > 0 && data.experienceYears != null && data.location)
   const now = new Date()
 
   const profile = {
@@ -25,14 +24,19 @@ export async function upsertMyProfile(uid, data) {
     skills: data.skills || [],
     experienceYears: data.experienceYears ?? null,
     experienceSummary: data.experienceSummary || '',
+    educationLevel: data.educationLevel || '',
     location: data.location || '',
     preferredJobTypes: data.preferredJobTypes || [],
     preferredWorkModes: data.preferredWorkModes || [],
     expectedSalaryMin: data.expectedSalaryMin ?? null,
     expectedSalaryMax: data.expectedSalaryMax ?? null,
     bio: data.bio || '',
-    profileComplete,
+    resumeLink: data.resumeLink || '',
   }
+  // Single source of truth: the same function that drives the on-screen
+  // completion meter also derives the stored flag, so the two can never
+  // disagree about whether this profile is "complete".
+  profile.profileComplete = calculateProfileCompletion(profile).isComplete
 
   await setDoc(ref, {
     ...profile,

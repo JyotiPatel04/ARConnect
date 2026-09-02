@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react'
-import { AlertCircle, GraduationCap, Search } from 'lucide-react'
+import { AlertCircle, GraduationCap, Search, ShieldAlert, ShieldCheck } from 'lucide-react'
 import EmptyState from '../../components/ui/EmptyState'
+import Button from '../../components/ui/Button'
+import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import ModerationReasonInput from '../../components/admin/ModerationReasonInput'
+import { isValidModerationReason } from '../../lib/moderationValidation'
 import PageHeader from '../../components/PageHeader'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import useAdminUsers from '../../hooks/useAdminUsers'
@@ -18,8 +22,12 @@ function formatDate(timestamp) {
 // admin any access to it either — there's simply nothing to over-expose.
 export default function AdminCandidatesPage() {
   useDocumentTitle('Candidates')
-  const { users, loading, error } = useAdminUsers()
+  const { users, loading, error, suspendUser, unsuspendUser } = useAdminUsers()
   const [search, setSearch] = useState('')
+  const [pendingAction, setPendingAction] = useState(null)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState('')
 
   const candidates = useMemo(() => users.filter((u) => u.role === 'candidate'), [users])
   const filtered = useMemo(() => {
@@ -27,6 +35,30 @@ export default function AdminCandidatesPage() {
     const term = search.toLowerCase()
     return candidates.filter((c) => `${c.full_name || ''} ${c.email || ''}`.toLowerCase().includes(term))
   }, [candidates, search])
+
+  function openAction(user, nextStatus) {
+    setPendingAction({ user, nextStatus })
+    setReason('')
+    setActionError('')
+  }
+
+  async function handleConfirm() {
+    if (!pendingAction || !isValidModerationReason(reason)) return
+    setBusy(true)
+    setActionError('')
+    try {
+      if (pendingAction.nextStatus === 'suspended') {
+        await suspendUser(pendingAction.user.id, reason)
+      } else {
+        await unsuspendUser(pendingAction.user.id, reason)
+      }
+      setPendingAction(null)
+    } catch (err) {
+      setActionError(err.message || 'Something went wrong. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div>
@@ -61,20 +93,54 @@ export default function AdminCandidatesPage() {
 
       {!loading && !error && filtered.length > 0 && (
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((c) => (
-            <div key={c.id} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3.5 shadow-soft">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-50 text-[12px] font-bold text-primary-600">
-                {getInitials(c.full_name) || '—'}
+          {filtered.map((c) => {
+            const suspended = c.moderationStatus === 'suspended'
+            return (
+              <div key={c.id} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3.5 shadow-soft">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-50 text-[12px] font-bold text-primary-600">
+                  {getInitials(c.full_name) || '—'}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-bold text-navy-900">{c.full_name || 'Unnamed'}</p>
+                  <p className="truncate text-xs text-navy-500">{c.email}</p>
+                  <p className="mt-0.5 text-[10.5px] text-navy-400">Joined {formatDate(c.created_at)}</p>
+                  <p className={`mt-0.5 text-[10.5px] font-semibold ${suspended ? 'text-red-600' : 'text-success-600'}`}>
+                    {suspended ? 'Suspended' : 'Active'}
+                  </p>
+                </div>
+                {suspended ? (
+                  <Button size="sm" variant="secondary" icon={ShieldCheck} onClick={() => openAction(c, 'active')}>
+                    Unsuspend
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="danger" icon={ShieldAlert} onClick={() => openAction(c, 'suspended')}>
+                    Suspend
+                  </Button>
+                )}
               </div>
-              <div className="min-w-0">
-                <p className="truncate text-[13px] font-bold text-navy-900">{c.full_name || 'Unnamed'}</p>
-                <p className="truncate text-xs text-navy-500">{c.email}</p>
-                <p className="mt-0.5 text-[10.5px] text-navy-400">Joined {formatDate(c.created_at)}</p>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingAction)}
+        title={pendingAction?.nextStatus === 'suspended' ? 'Suspend this candidate?' : 'Unsuspend this candidate?'}
+        message={
+          pendingAction?.nextStatus === 'suspended'
+            ? `"${pendingAction?.user.full_name || pendingAction?.user.email}" will be blocked from applying, saving jobs, and updating their profile until unsuspended. This is fully reversible.`
+            : `"${pendingAction?.user.full_name || pendingAction?.user.email}" will regain normal access immediately.`
+        }
+        confirmLabel={pendingAction?.nextStatus === 'suspended' ? 'Suspend' : 'Unsuspend'}
+        variant={pendingAction?.nextStatus === 'suspended' ? 'danger' : 'primary'}
+        confirming={busy}
+        confirmDisabled={!isValidModerationReason(reason)}
+        onConfirm={handleConfirm}
+        onCancel={() => setPendingAction(null)}
+      >
+        {actionError && <p className="mb-2 text-xs font-semibold text-red-600">{actionError}</p>}
+        <ModerationReasonInput value={reason} onChange={setReason} />
+      </ConfirmDialog>
     </div>
   )
 }

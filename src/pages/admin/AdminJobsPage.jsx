@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react'
-import { AlertCircle, Briefcase, Search } from 'lucide-react'
+import { AlertCircle, Briefcase, RotateCcw, Search, XCircle } from 'lucide-react'
 import EmptyState from '../../components/ui/EmptyState'
+import Button from '../../components/ui/Button'
+import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import ModerationReasonInput from '../../components/admin/ModerationReasonInput'
+import { isValidModerationReason } from '../../lib/moderationValidation'
 import PageHeader from '../../components/PageHeader'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import useAdminJobs from '../../hooks/useAdminJobs'
@@ -9,9 +13,37 @@ const STATUS_FILTERS = ['all', 'active', 'closed']
 
 export default function AdminJobsPage() {
   useDocumentTitle('Jobs')
-  const { jobs, loading, error } = useAdminJobs()
+  const { jobs, loading, error, closeJobAsAdmin, reopenJobAsAdmin } = useAdminJobs()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [pendingAction, setPendingAction] = useState(null) // { job, nextStatus }
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState('')
+
+  function openAction(job, nextStatus) {
+    setPendingAction({ job, nextStatus })
+    setReason('')
+    setActionError('')
+  }
+
+  async function handleConfirm() {
+    if (!pendingAction || !isValidModerationReason(reason)) return
+    setBusy(true)
+    setActionError('')
+    try {
+      if (pendingAction.nextStatus === 'closed') {
+        await closeJobAsAdmin(pendingAction.job.id, reason)
+      } else {
+        await reopenJobAsAdmin(pendingAction.job.id, reason)
+      }
+      setPendingAction(null)
+    } catch (err) {
+      setActionError(err.message || 'Something went wrong. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase()
@@ -79,6 +111,7 @@ export default function AdminJobsPage() {
                 <th className="px-4 py-2.5 font-bold">Type</th>
                 <th className="px-4 py-2.5 font-bold">Applications</th>
                 <th className="px-4 py-2.5 font-bold">Status</th>
+                <th className="px-4 py-2.5 font-bold">Moderation</th>
               </tr>
             </thead>
             <tbody>
@@ -98,12 +131,42 @@ export default function AdminJobsPage() {
                       {job.status === 'active' ? 'Active' : 'Closed'}
                     </span>
                   </td>
+                  <td className="px-4 py-2.5">
+                    {job.status === 'active' ? (
+                      <Button size="sm" variant="danger" icon={XCircle} onClick={() => openAction(job, 'closed')}>
+                        Close
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="secondary" icon={RotateCcw} onClick={() => openAction(job, 'active')}>
+                        Reopen
+                      </Button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingAction)}
+        title={pendingAction?.nextStatus === 'closed' ? 'Close this job?' : 'Reopen this job?'}
+        message={
+          pendingAction?.nextStatus === 'closed'
+            ? `"${pendingAction?.job.title}" will no longer accept new applications. Existing applications remain intact and the employer can still manage them. This is fully reversible.`
+            : `"${pendingAction?.job.title}" will become visible and open to new applications again.`
+        }
+        confirmLabel={pendingAction?.nextStatus === 'closed' ? 'Close Job' : 'Reopen Job'}
+        variant={pendingAction?.nextStatus === 'closed' ? 'danger' : 'primary'}
+        confirming={busy}
+        confirmDisabled={!isValidModerationReason(reason)}
+        onConfirm={handleConfirm}
+        onCancel={() => setPendingAction(null)}
+      >
+        {actionError && <p className="mb-2 text-xs font-semibold text-red-600">{actionError}</p>}
+        <ModerationReasonInput value={reason} onChange={setReason} />
+      </ConfirmDialog>
     </div>
   )
 }

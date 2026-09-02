@@ -1,17 +1,20 @@
-import { Briefcase, Home, Search, ClipboardList, MessageCircle, User, LogOut } from 'lucide-react'
+import { Briefcase, Home, Search, ClipboardList, CalendarDays, MessageCircle, User, LogOut } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import useAuth from '../hooks/useAuth'
+import useNotifications from '../hooks/useNotifications'
+import NotificationBell from '../components/shared/NotificationBell'
 import { getInitials } from '../lib/format'
 
 const navItems = [
   { to: '/candidate/home', label: 'Home', icon: Home },
   { to: '/candidate/jobs', label: 'Search', icon: Search },
   { to: '/candidate/applications', label: 'Applications', icon: ClipboardList },
+  { to: '/candidate/interviews', label: 'Interviews', icon: CalendarDays },
   { to: '/candidate/chat', label: 'Chat', icon: MessageCircle },
   { to: '/candidate/profile', label: 'Profile', icon: User },
 ]
 
-function Header() {
+function Header({ unreadCount }) {
   const { profile, signOut } = useAuth()
 
   // ProtectedRoute reacts to sign-out itself and redirects to /auth/login —
@@ -32,6 +35,7 @@ function Header() {
           </span>
         </Link>
         <div className="flex items-center gap-2">
+          <NotificationBell to="/candidate/notifications" unreadCount={unreadCount} />
           <Link
             to="/candidate/profile"
             className="flex h-8 w-8 items-center justify-center rounded-full bg-navy-900 text-[11px] font-bold text-white"
@@ -78,11 +82,13 @@ function BottomNav() {
 }
 
 export default function CandidateLayout() {
+  const notifications = useNotifications()
+
   return (
     <div className="min-h-screen bg-[#f4f5f9]">
-      <Header />
+      <Header unreadCount={notifications.unreadCount} />
       <main className="mx-auto max-w-2xl px-4 pb-24 pt-5">
-        <Outlet />
+        <Outlet context={notifications} />
       </main>
       <BottomNav />
     </div>

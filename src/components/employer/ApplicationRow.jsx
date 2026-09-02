@@ -1,6 +1,13 @@
-import { Sparkles } from 'lucide-react'
+import { useState } from 'react'
+import { CalendarClock, CheckCircle2, Pencil, Sparkles, XCircle } from 'lucide-react'
 import { APPLICATION_STATUSES } from '../../services/employerApplicationService'
+import { STATUS_LABELS as INTERVIEW_STATUS_LABELS } from '../../services/interviewService'
+import { INTERVIEW_TYPE_LABELS } from '../../lib/interviewForm'
 import useJobMatch from '../../hooks/useJobMatch'
+import useApplicationInterview from '../../hooks/useApplicationInterview'
+import Button from '../ui/Button'
+import ConfirmDialog from '../ui/ConfirmDialog'
+import ScheduleInterviewDialog from './ScheduleInterviewDialog'
 import { formatRelativeTime } from '../../lib/format'
 
 const STATUS_LABELS = {
@@ -14,10 +21,49 @@ const STATUS_LABELS = {
 
 export default function ApplicationRow({ application, onStatusChange, updating, showJobTitle = true }) {
   const { match, loading: matchLoading } = useJobMatch(application.jobId, application.candidateId)
+  const {
+    interview,
+    loading: interviewLoading,
+    error: interviewFetchError,
+    saving,
+    schedule,
+    edit,
+    cancel,
+    complete,
+  } = useApplicationInterview(application)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [confirmCancel, setConfirmCancel] = useState(false)
+  const [interviewError, setInterviewError] = useState('')
+
+  const isActive = interview?.status === 'scheduled'
+
+  async function handleSubmit(fields) {
+    setInterviewError('')
+    try {
+      if (isActive) {
+        await edit(fields)
+      } else {
+        await schedule(fields)
+      }
+      setDialogOpen(false)
+    } catch (err) {
+      setInterviewError(err.message || 'Something went wrong. Please try again.')
+      throw err
+    }
+  }
+
+  async function handleCancelConfirm() {
+    try {
+      await cancel()
+      setConfirmCancel(false)
+    } catch (err) {
+      setInterviewError(err.message || 'Something went wrong. Please try again.')
+    }
+  }
 
   return (
-    <div className="flex flex-col gap-2 rounded-2xl border border-slate-100 bg-white p-3.5 shadow-soft sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
+    <div className="flex flex-col gap-2 rounded-2xl border border-slate-100 bg-white p-3.5 shadow-soft sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="text-[13px] font-bold text-navy-900">{application.candidateName}</p>
           {!matchLoading && match?.score != null && (
@@ -34,7 +80,41 @@ export default function ApplicationRow({ application, onStatusChange, updating, 
           {showJobTitle && `${application.jobTitle} · `}
           Applied {formatRelativeTime(application.appliedAt?.toDate?.())}
         </p>
+
+        {interviewError && <p className="mt-1.5 text-[11px] font-semibold text-red-600">{interviewError}</p>}
+        {interviewFetchError && (
+          <p className="mt-1.5 text-[11px] font-semibold text-red-600">Couldn&apos;t load interview status.</p>
+        )}
+
+        {!interviewLoading && interview && (
+          <div className="mt-2 rounded-lg bg-slate-50 px-2.5 py-2 text-[11px] text-navy-600">
+            <p className="font-semibold text-navy-800">
+              Interview {INTERVIEW_STATUS_LABELS[interview.status]} · {INTERVIEW_TYPE_LABELS[interview.interviewType]}
+            </p>
+            <p>{interview.scheduledAt?.toDate?.().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+            {isActive && (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <Button size="sm" variant="secondary" icon={Pencil} onClick={() => setDialogOpen(true)} disabled={saving}>
+                  Edit
+                </Button>
+                <Button size="sm" variant="success" icon={CheckCircle2} onClick={complete} disabled={saving}>
+                  Mark Completed
+                </Button>
+                <Button size="sm" variant="danger" icon={XCircle} onClick={() => setConfirmCancel(true)} disabled={saving}>
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!interviewLoading && !isActive && (
+          <Button size="sm" variant="secondary" icon={CalendarClock} className="mt-2" onClick={() => setDialogOpen(true)}>
+            Schedule Interview
+          </Button>
+        )}
       </div>
+
       <select
         value={application.status}
         onChange={(e) => onStatusChange(application.id, e.target.value)}
@@ -48,6 +128,24 @@ export default function ApplicationRow({ application, onStatusChange, updating, 
           </option>
         ))}
       </select>
+
+      <ScheduleInterviewDialog
+        open={dialogOpen}
+        interview={isActive ? interview : null}
+        onSubmit={handleSubmit}
+        onCancel={() => setDialogOpen(false)}
+        submitting={saving}
+      />
+      <ConfirmDialog
+        open={confirmCancel}
+        title="Cancel this interview?"
+        message="The candidate will be notified. This cannot be undone, but you can schedule a new interview afterward."
+        confirmLabel="Cancel Interview"
+        variant="danger"
+        confirming={saving}
+        onConfirm={handleCancelConfirm}
+        onCancel={() => setConfirmCancel(false)}
+      />
     </div>
   )
 }

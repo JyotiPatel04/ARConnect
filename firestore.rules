@@ -40,6 +40,18 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    // Absent on every user created before Phase 9 — .get(key, default)
+    // treats "field missing" and "explicitly active" as the same thing,
+    // both here and in the users/{uid} update rule below, so existing
+    // accounts never need a backfill write to be correctly "active".
+    function callerModerationStatus() {
+      return callerProfile().get('moderationStatus', 'active');
+    }
+
+    function isNotSuspended() {
+      return callerModerationStatus() != 'suspended';
+    }
+
     // users/{uid} — one profile document per authenticated user.
     match /users/{userId} {
       // Admins can read any user's profile — Phase 5's Users/Candidates/
@@ -63,8 +75,40 @@ service cloud.firestore {
       // impossible. To promote a user to admin, edit the document directly
       // in the Firebase Console (which runs with full access, bypassing
       // these rules) — there is deliberately no client-facing way to do it.
-      allow update: if isOwner(userId)
-        && request.resource.data.role == resource.data.role;
+      // moderationStatus is pinned here too (via the same default-aware
+      // accessor) so a candidate/employer editing their own phone number
+      // can never sneak a status change through this path — Phase 9's
+      // admin-only branch below is the only way it can ever move.
+      allow update: if
+        (
+          isOwner(userId)
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.get('moderationStatus', 'active') == resource.data.get('moderationStatus', 'active')
+        )
+        ||
+        (
+          // Admin moderation: the ONLY thing this path may ever change is
+          // moderationStatus. Every other field — role, full_name, email,
+          // phone, avatar_url, created_at — is pinned explicitly equal, so
+          // an admin can suspend/unsuspend an account but can never touch
+          // its identity or role through this feature. request.auth.uid
+          // != userId is a hard, rules-level "cannot suspend yourself" —
+          // not just a disabled button in the UI.
+          callerRole() == 'admin'
+          && request.auth.uid != userId
+          && request.resource.data.get('moderationStatus', 'active') in ['active', 'suspended']
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.full_name == resource.data.full_name
+          && request.resource.data.email == resource.data.email
+          // .get(key, default) rather than direct field access — phone
+          // and avatar_url are optional/nullable and a direct
+          // resource.data.phone access throws (denying the whole write)
+          // on any document where the field is genuinely absent, not
+          // just null.
+          && request.resource.data.get('phone', null) == resource.data.get('phone', null)
+          && request.resource.data.get('avatar_url', null) == resource.data.get('avatar_url', null)
+          && request.resource.data.created_at == resource.data.created_at
+        );
 
       allow delete: if false;
     }
@@ -82,6 +126,7 @@ service cloud.firestore {
       allow read: if true;
 
       allow create: if isSignedIn()
+        && isNotSuspended()
         && callerRole() == 'employer'
         && request.resource.data.employerId == request.auth.uid
         && request.resource.data.applicationCount == 0;
@@ -89,9 +134,12 @@ service cloud.firestore {
       allow update: if isSignedIn() && (
         // The owning employer may change anything (title, salary, status,
         // ...) EXCEPT employerId — ownership can never be reassigned, even
-        // by the current owner, even accidentally.
+        // by the current owner, even accidentally. A suspended employer
+        // loses this path entirely (Phase 9) — they can't edit, close, or
+        // reopen their own jobs while suspended; only admin still can.
         (
           callerRole() == 'employer'
+          && isNotSuspended()
           && resource.data.employerId == request.auth.uid
           && request.resource.data.employerId == resource.data.employerId
         )
@@ -108,9 +156,22 @@ service cloud.firestore {
         // diff()/hasOnly() field-allowlist.
         (
           callerRole() == 'candidate'
+          && isNotSuspended()
           && request.resource.data.applicationCount == resource.data.applicationCount + 1
           && request.resource.data.employerId == resource.data.employerId
           && request.resource.data.status == resource.data.status
+        )
+        ||
+        // Phase 9 admin moderation: the ONLY thing this path may ever
+        // change is status (active/closed) — ownership and application
+        // history (applicationCount) are pinned explicitly equal, so an
+        // admin closing a problematic job can never reassign it or touch
+        // its application count.
+        (
+          callerRole() == 'admin'
+          && request.resource.data.status in ['active', 'closed']
+          && request.resource.data.employerId == resource.data.employerId
+          && request.resource.data.applicationCount == resource.data.applicationCount
         )
       );
 
@@ -118,8 +179,10 @@ service cloud.firestore {
       // preserves application history for any job that was ever applied
       // to. The UI only ever offers Close for such jobs, but this is the
       // actual enforcement: even a direct deleteDoc() call bypassing the
-      // UI is rejected the same way.
+      // UI is rejected the same way. A suspended employer cannot delete
+      // their own jobs either (Phase 9).
       allow delete: if isSignedIn()
+        && isNotSuspended()
         && callerRole() == 'employer'
         && resource.data.employerId == request.auth.uid
         && resource.data.applicationCount == 0;
@@ -147,7 +210,13 @@ service cloud.firestore {
       // DIFFERENT employer's inbox than the job they really applied to),
       // and candidateName/candidateEmail must match the applicant's own
       // profile (so an employer can never be shown a spoofed identity).
+      // Phase 9: a job an admin (or its own employer) has closed can no
+      // longer receive new applications — this was never actually
+      // enforced anywhere before Phase 9 added admin job moderation, so
+      // it's a genuine tightening, not a pre-existing guarantee.
       allow create: if isSignedIn()
+        && isNotSuspended()
+        && jobFor(request.resource.data.jobId).status == 'active'
         && request.resource.data.candidateId == request.auth.uid
         && applicationId == request.auth.uid + '_' + request.resource.data.jobId
         && request.resource.data.status == 'applied'
@@ -165,6 +234,7 @@ service cloud.firestore {
       // path at all, so they can never touch their own application's
       // status either.
       allow update: if isSignedIn()
+        && isNotSuspended()
         && callerRole() == 'employer'
         && resource.data.employerId == request.auth.uid
         && request.resource.data.status in ['applied', 'reviewing', 'shortlisted', 'interview', 'rejected', 'hired']
@@ -187,10 +257,11 @@ service cloud.firestore {
       allow read: if isSignedIn() && resource.data.candidateId == request.auth.uid;
 
       allow create: if isSignedIn()
+        && isNotSuspended()
         && request.resource.data.candidateId == request.auth.uid
         && savedJobId == request.auth.uid + '_' + request.resource.data.jobId;
 
-      allow delete: if isSignedIn() && resource.data.candidateId == request.auth.uid;
+      allow delete: if isSignedIn() && isNotSuspended() && resource.data.candidateId == request.auth.uid;
 
       allow update: if false;
     }
@@ -204,6 +275,7 @@ service cloud.firestore {
       allow read: if isOwner(userId);
 
       allow create, update: if isOwner(userId)
+        && isNotSuspended()
         && request.resource.data.candidateId == userId;
 
       allow delete: if false;
@@ -226,9 +298,262 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    // Everything else (companies, interviews, messages, notifications,
-    // reports, ...) is not implemented yet — default-deny until each
-    // collection gets its own rules in a later phase.
+    // companyProfiles/{uid} — PRIVATE employer company data, including
+    // contact details. Never exposed to candidates or other employers.
+    // Firestore rules can only grant/deny read access to a whole document,
+    // never redact individual fields per-reader — that's why the public,
+    // candidate-facing view lives in a SEPARATE collection (companySummaries,
+    // below) rather than trying to carve exceptions into this one.
+    match /companyProfiles/{userId} {
+      allow read: if isOwner(userId);
+
+      allow create, update: if isOwner(userId)
+        && isNotSuspended()
+        && callerRole() == 'employer'
+        && request.resource.data.employerId == userId;
+
+      allow delete: if false;
+    }
+
+    // companySummaries/{uid} — the public-safe subset of a company's
+    // profile (never contactEmail/contactPhone), keyed by the same uid so
+    // a job's employerId can look one up directly. Publicly readable, same
+    // openness as jobs/{jobId} itself — a candidate should be able to see
+    // basic company info before ever deciding to apply. The
+    // contactEmail/contactPhone exclusion is enforced structurally, not
+    // just by client convention: no write containing either field can
+    // ever succeed here, regardless of what a buggy or malicious client
+    // sends.
+    match /companySummaries/{userId} {
+      allow read: if true;
+
+      allow create, update: if isOwner(userId)
+        && isNotSuspended()
+        && callerRole() == 'employer'
+        && request.resource.data.employerId == userId
+        && !('contactEmail' in request.resource.data)
+        && !('contactPhone' in request.resource.data);
+
+      allow delete: if false;
+    }
+
+    // Reads a real application's data to validate a notification that
+    // references it — the same jobFor()-style pattern used by
+    // applications/{id}.create above, applied here so a notification's
+    // recipientId can never be a bare client claim.
+    function applicationFor(applicationId) {
+      return get(/databases/$(database)/documents/applications/$(applicationId)).data;
+    }
+
+    // Same pattern, for interview-related notifications (Phase 10).
+    function interviewFor(interviewId) {
+      return get(/databases/$(database)/documents/interviews/$(interviewId)).data;
+    }
+
+    // notifications/{notificationId} — always created as a SEPARATE write
+    // after the real action (application create, status update) has
+    // already committed, never in the same batch — Firestore rules
+    // evaluate get() against already-persisted state, not sibling writes
+    // in the same batch, so validating against a same-batch document
+    // isn't possible. The one consequence: a notification write could in
+    // theory fail even though the underlying action succeeded (a rare
+    // network blip) — acceptable, since the action itself is unaffected
+    // and a missing "nice to have" notification isn't a security issue.
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.recipientId == request.auth.uid;
+
+      // Every create path below ties recipientId to something real and
+      // verifiable — never a bare claim — so a user can never generate a
+      // notification for an arbitrary recipient:
+      allow create: if isSignedIn() && (
+        // 1. A candidate confirms their OWN application was submitted.
+        (
+          request.resource.data.recipientId == request.auth.uid
+          && request.resource.data.type == 'application_submitted_confirmation'
+        )
+        ||
+        // 2. A candidate notifies the REAL employer of a REAL application
+        //    they actually own — recipientId is read off that
+        //    already-persisted application, not supplied by the client.
+        (
+          callerRole() == 'candidate'
+          && request.resource.data.type == 'new_application'
+          && applicationFor(request.resource.data.relatedApplicationId).candidateId == request.auth.uid
+          && applicationFor(request.resource.data.relatedApplicationId).jobId == request.resource.data.relatedJobId
+          && request.resource.data.recipientId == applicationFor(request.resource.data.relatedApplicationId).employerId
+        )
+        ||
+        // 3. An employer notifies the REAL candidate of a REAL application
+        //    they actually own — same pattern, mirrored.
+        (
+          callerRole() == 'employer'
+          && request.resource.data.type == 'application_status_updated'
+          && applicationFor(request.resource.data.relatedApplicationId).employerId == request.auth.uid
+          && request.resource.data.recipientId == applicationFor(request.resource.data.relatedApplicationId).candidateId
+        )
+        ||
+        // 4. Phase 10: an employer notifies the REAL candidate of a REAL
+        //    interview they actually own — same pattern again, this time
+        //    verified against the interviews collection instead of
+        //    applications.
+        (
+          callerRole() == 'employer'
+          && request.resource.data.type in ['interview_scheduled', 'interview_updated', 'interview_cancelled']
+          && interviewFor(request.resource.data.relatedInterviewId).employerId == request.auth.uid
+          && request.resource.data.recipientId == interviewFor(request.resource.data.relatedInterviewId).candidateId
+        )
+      );
+
+      // Only the recipient may ever touch their own notification, and
+      // only to flip `read` — every other field is permanently immutable
+      // (explicit equality checks, same style as applications/{id}.update
+      // above, rather than a generic diff()/hasOnly() allowlist).
+      allow update: if isSignedIn()
+        && resource.data.recipientId == request.auth.uid
+        && request.resource.data.recipientId == resource.data.recipientId
+        && request.resource.data.type == resource.data.type
+        && request.resource.data.title == resource.data.title
+        && request.resource.data.message == resource.data.message
+        && request.resource.data.relatedJobId == resource.data.relatedJobId
+        && request.resource.data.relatedApplicationId == resource.data.relatedApplicationId
+        // .get(key, null) — most notifications (Phase 8 types) never had
+        // this field at all; Phase 10's interview types are the first to
+        // set it. Default-aware access keeps both cases correctly pinned
+        // without throwing on documents where the field is absent.
+        && request.resource.data.get('relatedInterviewId', null) == resource.data.get('relatedInterviewId', null)
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if false;
+    }
+
+    // moderationLogs/{logId} — an immutable audit trail of every
+    // moderation action. Create-only, admin-only, and the create rule
+    // needs no cross-document get() at all (unlike notifications), so
+    // moderationService.js writes the target-doc change and the log
+    // entry together in ONE atomic batch: a log exists if and only if
+    // the action it documents actually happened.
+    match /moderationLogs/{logId} {
+      allow read: if isSignedIn() && callerRole() == 'admin';
+
+      allow create: if isSignedIn()
+        && callerRole() == 'admin'
+        && request.resource.data.adminId == request.auth.uid
+        && request.resource.data.action in [
+          'user_suspended', 'user_unsuspended', 'job_closed', 'job_reopened',
+          'report_reviewed', 'report_dismissed'
+        ]
+        && request.resource.data.targetType in ['user', 'job', 'report']
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() >= 3
+        && request.resource.data.reason.size() <= 500;
+
+      // No UI ever offers editing or deleting a log entry, and this is
+      // the actual enforcement — even a direct call bypassing the UI is
+      // rejected the same way.
+      allow update, delete: if false;
+    }
+
+    // reports/{reportId} — a candidate/employer flagging a job or user for
+    // admin attention. Once submitted, the reporter has no further access
+    // to it at all (no update, no delete) — only admin can ever read or
+    // change it, and even admin may only move `status` and set
+    // `reviewedBy`/`reviewedAt`; every submission-time field is pinned.
+    match /reports/{reportId} {
+      allow read: if isSignedIn() && callerRole() == 'admin';
+
+      allow create: if isSignedIn()
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.targetType in ['user', 'job']
+        && request.resource.data.status == 'open'
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() >= 3
+        && request.resource.data.reason.size() <= 500
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 1000;
+
+      allow update: if isSignedIn()
+        && callerRole() == 'admin'
+        && request.resource.data.status in ['reviewed', 'dismissed']
+        && request.resource.data.reviewedBy == request.auth.uid
+        && request.resource.data.reporterId == resource.data.reporterId
+        && request.resource.data.targetType == resource.data.targetType
+        && request.resource.data.targetId == resource.data.targetId
+        && request.resource.data.reason == resource.data.reason
+        && request.resource.data.description == resource.data.description
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if false;
+    }
+
+    // Shared validation for interview create/update — enum values, a
+    // sane duration bound, bounded notes, and the type-conditional
+    // meetingLink/location requirements from Part 3. Kept as one function
+    // so create and update can never drift apart on what "a valid
+    // interview" means.
+    function validInterviewFields(data) {
+      return data.interviewType in ['online', 'phone', 'in_person']
+        && data.status in ['scheduled', 'completed', 'cancelled']
+        && data.scheduledAt is timestamp
+        && data.durationMinutes is int
+        && data.durationMinutes > 0
+        && data.durationMinutes <= 480
+        && data.notes is string
+        && data.notes.size() <= 1000
+        && (data.interviewType != 'online' || (data.meetingLink is string && data.meetingLink.matches('^https://.*')))
+        && (data.interviewType != 'in_person' || (data.location is string && data.location.size() >= 3 && data.location.size() <= 200));
+    }
+
+    // interviews/{interviewId} — scheduled by the employer who owns the
+    // underlying application; the candidate is always read-only. No admin
+    // clause: Phase 5-9 never needed one for this kind of scoped,
+    // two-party data, and nothing in Phase 10 asks for one either.
+    match /interviews/{interviewId} {
+      allow read: if isSignedIn() && (
+        resource.data.candidateId == request.auth.uid ||
+        (callerRole() == 'employer' && resource.data.employerId == request.auth.uid)
+      );
+
+      // candidateId/jobId are never taken from the client — they're read
+      // off the REAL application document being scheduled against, the
+      // same jobFor()/applicationFor() trust pattern used everywhere else
+      // in this file. This is what makes "spoof candidateId" or "schedule
+      // for an application you don't own" structurally impossible rather
+      // than a check that has to get every field right.
+      allow create: if isSignedIn()
+        && isNotSuspended()
+        && callerRole() == 'employer'
+        && request.resource.data.employerId == request.auth.uid
+        && applicationFor(request.resource.data.applicationId).employerId == request.auth.uid
+        && request.resource.data.candidateId == applicationFor(request.resource.data.applicationId).candidateId
+        && request.resource.data.jobId == applicationFor(request.resource.data.applicationId).jobId
+        && request.resource.data.status == 'scheduled'
+        && validInterviewFields(request.resource.data);
+
+      // Edit/cancel/mark-completed all go through this one path — every
+      // ownership field (employerId/candidateId/applicationId/jobId) is
+      // pinned explicitly equal, so an employer can freely change the
+      // schedule, type, or status of their OWN interview but can never
+      // reassign it to a different application, candidate, or job.
+      allow update: if isSignedIn()
+        && isNotSuspended()
+        && callerRole() == 'employer'
+        && resource.data.employerId == request.auth.uid
+        && request.resource.data.employerId == resource.data.employerId
+        && request.resource.data.candidateId == resource.data.candidateId
+        && request.resource.data.applicationId == resource.data.applicationId
+        && request.resource.data.jobId == resource.data.jobId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && validInterviewFields(request.resource.data);
+
+      // Never hard-deleted — cancelling sets status: 'cancelled' instead,
+      // preserving the record (Part 10: "existing interview data must
+      // remain intact").
+      allow delete: if false;
+    }
+
+    // Everything else (messages, ...) is not implemented yet —
+    // default-deny until each collection gets its own rules in a later
+    // phase.
     match /{document=**} {
       allow read, write: if false;
     }

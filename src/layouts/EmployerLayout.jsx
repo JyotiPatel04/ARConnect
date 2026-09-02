@@ -7,13 +7,14 @@ import {
   CalendarCheck,
   Building2,
   UserCircle,
-  Bell,
   Menu,
   X,
   LogOut,
 } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import useAuth from '../hooks/useAuth'
+import useNotifications from '../hooks/useNotifications'
+import NotificationBell from '../components/shared/NotificationBell'
 import { getInitials } from '../lib/format'
 
 const navItems = [
@@ -82,6 +83,7 @@ function SidebarContent({ onNavigate }) {
 export default function EmployerLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const { profile } = useAuth()
+  const notifications = useNotifications()
 
   return (
     <div className="min-h-screen bg-[#f4f5f9] lg:flex">
@@ -116,7 +118,7 @@ export default function EmployerLayout() {
           </button>
           <span className="hidden text-sm font-bold text-navy-900 lg:block">Employer Portal</span>
           <div className="flex items-center gap-3">
-            <Bell size={17} className="text-navy-400" />
+            <NotificationBell to="/employer/notifications" unreadCount={notifications.unreadCount} />
             <Link
               to="/employer/profile"
               className="flex h-7 w-7 items-center justify-center rounded-full bg-navy-900 text-[10px] font-bold text-white"
@@ -126,7 +128,7 @@ export default function EmployerLayout() {
           </div>
         </header>
         <main className="flex-1 p-4 sm:p-6">
-          <Outlet />
+          <Outlet context={notifications} />
         </main>
       </div>
     </div>

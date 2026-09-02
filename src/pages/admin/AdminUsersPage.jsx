@@ -1,7 +1,12 @@
 import { useMemo, useState } from 'react'
-import { AlertCircle, Search, Users } from 'lucide-react'
+import { AlertCircle, Search, ShieldAlert, ShieldCheck, Users } from 'lucide-react'
 import EmptyState from '../../components/ui/EmptyState'
+import Button from '../../components/ui/Button'
+import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import ModerationReasonInput from '../../components/admin/ModerationReasonInput'
+import { isValidModerationReason } from '../../lib/moderationValidation'
 import PageHeader from '../../components/PageHeader'
+import useAuth from '../../hooks/useAuth'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import useAdminUsers from '../../hooks/useAdminUsers'
 
@@ -21,9 +26,14 @@ function matchesSearch(user, term) {
 
 export default function AdminUsersPage() {
   useDocumentTitle('Users')
-  const { users, loading, error } = useAdminUsers()
+  const { user: currentAdmin } = useAuth()
+  const { users, loading, error, suspendUser, unsuspendUser } = useAdminUsers()
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
+  const [pendingAction, setPendingAction] = useState(null) // { user, nextStatus }
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState('')
 
   const filtered = useMemo(
     () =>
@@ -32,6 +42,30 @@ export default function AdminUsersPage() {
       ),
     [users, search, roleFilter]
   )
+
+  function openAction(user, nextStatus) {
+    setPendingAction({ user, nextStatus })
+    setReason('')
+    setActionError('')
+  }
+
+  async function handleConfirm() {
+    if (!pendingAction || !isValidModerationReason(reason)) return
+    setBusy(true)
+    setActionError('')
+    try {
+      if (pendingAction.nextStatus === 'suspended') {
+        await suspendUser(pendingAction.user.id, reason)
+      } else {
+        await unsuspendUser(pendingAction.user.id, reason)
+      }
+      setPendingAction(null)
+    } catch (err) {
+      setActionError(err.message || 'Something went wrong. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div>
@@ -89,22 +123,61 @@ export default function AdminUsersPage() {
                 <th className="px-4 py-2.5 font-bold">Role</th>
                 <th className="px-4 py-2.5 font-bold">Joined</th>
                 <th className="px-4 py-2.5 font-bold">Status</th>
+                <th className="px-4 py-2.5 font-bold">Moderation</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((u) => (
-                <tr key={u.id} className="border-t border-slate-100">
-                  <td className="px-4 py-2.5 font-bold text-navy-900">{u.full_name || '—'}</td>
-                  <td className="px-4 py-2.5 text-navy-600">{u.email}</td>
-                  <td className="px-4 py-2.5 capitalize text-navy-600">{u.role}</td>
-                  <td className="px-4 py-2.5 text-navy-600">{formatDate(u.created_at)}</td>
-                  <td className="px-4 py-2.5 font-semibold text-success-600">Active</td>
-                </tr>
-              ))}
+              {filtered.map((u) => {
+                const suspended = u.moderationStatus === 'suspended'
+                const isSelf = u.id === currentAdmin?.uid
+                return (
+                  <tr key={u.id} className="border-t border-slate-100">
+                    <td className="px-4 py-2.5 font-bold text-navy-900">{u.full_name || '—'}</td>
+                    <td className="px-4 py-2.5 text-navy-600">{u.email}</td>
+                    <td className="px-4 py-2.5 capitalize text-navy-600">{u.role}</td>
+                    <td className="px-4 py-2.5 text-navy-600">{formatDate(u.created_at)}</td>
+                    <td className={`px-4 py-2.5 font-semibold ${suspended ? 'text-red-600' : 'text-success-600'}`}>
+                      {suspended ? 'Suspended' : 'Active'}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {isSelf ? (
+                        <span className="text-[11px] text-navy-300">—</span>
+                      ) : suspended ? (
+                        <Button size="sm" variant="secondary" icon={ShieldCheck} onClick={() => openAction(u, 'active')}>
+                          Unsuspend
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="danger" icon={ShieldAlert} onClick={() => openAction(u, 'suspended')}>
+                          Suspend
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingAction)}
+        title={pendingAction?.nextStatus === 'suspended' ? 'Suspend this user?' : 'Unsuspend this user?'}
+        message={
+          pendingAction?.nextStatus === 'suspended'
+            ? `"${pendingAction?.user.full_name || pendingAction?.user.email}" will be blocked from applying, saving jobs, posting jobs, and other protected actions until unsuspended. This is fully reversible.`
+            : `"${pendingAction?.user.full_name || pendingAction?.user.email}" will regain normal access immediately.`
+        }
+        confirmLabel={pendingAction?.nextStatus === 'suspended' ? 'Suspend' : 'Unsuspend'}
+        variant={pendingAction?.nextStatus === 'suspended' ? 'danger' : 'primary'}
+        confirming={busy}
+        confirmDisabled={!isValidModerationReason(reason)}
+        onConfirm={handleConfirm}
+        onCancel={() => setPendingAction(null)}
+      >
+        {actionError && <p className="mb-2 text-xs font-semibold text-red-600">{actionError}</p>}
+        <ModerationReasonInput value={reason} onChange={setReason} />
+      </ConfirmDialog>
     </div>
   )
 }

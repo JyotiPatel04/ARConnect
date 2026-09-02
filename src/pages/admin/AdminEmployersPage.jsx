@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react'
-import { AlertCircle, Building2, Search } from 'lucide-react'
+import { AlertCircle, Building2, Search, ShieldAlert, ShieldCheck } from 'lucide-react'
 import EmptyState from '../../components/ui/EmptyState'
+import Button from '../../components/ui/Button'
+import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import ModerationReasonInput from '../../components/admin/ModerationReasonInput'
+import { isValidModerationReason } from '../../lib/moderationValidation'
 import PageHeader from '../../components/PageHeader'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import useAdminUsers from '../../hooks/useAdminUsers'
@@ -14,12 +18,40 @@ function formatDate(timestamp) {
 
 export default function AdminEmployersPage() {
   useDocumentTitle('Employers')
-  const { users, loading: usersLoading, error: usersError } = useAdminUsers()
+  const { users, loading: usersLoading, error: usersError, suspendUser, unsuspendUser } = useAdminUsers()
   const { jobs, loading: jobsLoading, error: jobsError } = useAdminJobs()
   const [search, setSearch] = useState('')
+  const [pendingAction, setPendingAction] = useState(null)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState('')
 
   const loading = usersLoading || jobsLoading
   const error = usersError || jobsError
+
+  function openAction(user, nextStatus) {
+    setPendingAction({ user, nextStatus })
+    setReason('')
+    setActionError('')
+  }
+
+  async function handleConfirm() {
+    if (!pendingAction || !isValidModerationReason(reason)) return
+    setBusy(true)
+    setActionError('')
+    try {
+      if (pendingAction.nextStatus === 'suspended') {
+        await suspendUser(pendingAction.user.id, reason)
+      } else {
+        await unsuspendUser(pendingAction.user.id, reason)
+      }
+      setPendingAction(null)
+    } catch (err) {
+      setActionError(err.message || 'Something went wrong. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const employers = useMemo(() => {
     const list = users.filter((u) => u.role === 'employer')
@@ -70,36 +102,72 @@ export default function AdminEmployersPage() {
 
       {!loading && !error && filtered.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((e) => (
-            <div key={e.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-soft">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-sm font-bold text-primary-600">
-                  {(e.full_name || e.email || '?').charAt(0).toUpperCase()}
+          {filtered.map((e) => {
+            const suspended = e.moderationStatus === 'suspended'
+            return (
+              <div key={e.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-soft">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-sm font-bold text-primary-600">
+                    {(e.full_name || e.email || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-bold text-navy-900">{e.full_name || 'Unnamed'}</p>
+                    <p className="truncate text-xs text-navy-500">{e.email}</p>
+                  </div>
+                  <span className={`shrink-0 text-[10.5px] font-semibold ${suspended ? 'text-red-600' : 'text-success-600'}`}>
+                    {suspended ? 'Suspended' : 'Active'}
+                  </span>
                 </div>
-                <div className="min-w-0">
-                  <p className="truncate text-[13px] font-bold text-navy-900">{e.full_name || 'Unnamed'}</p>
-                  <p className="truncate text-xs text-navy-500">{e.email}</p>
+                <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3 text-center">
+                  <div>
+                    <p className="text-sm font-extrabold text-navy-900">{e.jobCount}</p>
+                    <p className="text-[10px] text-navy-400">Jobs</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-extrabold text-navy-900">{e.activeJobs}</p>
+                    <p className="text-[10px] text-navy-400">Active</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-extrabold text-navy-900">{e.applications}</p>
+                    <p className="text-[10px] text-navy-400">Applicants</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+                  <p className="text-[10.5px] text-navy-400">Joined {formatDate(e.created_at)}</p>
+                  {suspended ? (
+                    <Button size="sm" variant="secondary" icon={ShieldCheck} onClick={() => openAction(e, 'active')}>
+                      Unsuspend
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="danger" icon={ShieldAlert} onClick={() => openAction(e, 'suspended')}>
+                      Suspend
+                    </Button>
+                  )}
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3 text-center">
-                <div>
-                  <p className="text-sm font-extrabold text-navy-900">{e.jobCount}</p>
-                  <p className="text-[10px] text-navy-400">Jobs</p>
-                </div>
-                <div>
-                  <p className="text-sm font-extrabold text-navy-900">{e.activeJobs}</p>
-                  <p className="text-[10px] text-navy-400">Active</p>
-                </div>
-                <div>
-                  <p className="text-sm font-extrabold text-navy-900">{e.applications}</p>
-                  <p className="text-[10px] text-navy-400">Applicants</p>
-                </div>
-              </div>
-              <p className="mt-2.5 text-[10.5px] text-navy-400">Joined {formatDate(e.created_at)}</p>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingAction)}
+        title={pendingAction?.nextStatus === 'suspended' ? 'Suspend this employer?' : 'Unsuspend this employer?'}
+        message={
+          pendingAction?.nextStatus === 'suspended'
+            ? `"${pendingAction?.user.full_name || pendingAction?.user.email}" will be blocked from posting/editing jobs, closing/reopening jobs, updating application statuses, and editing their company profile until unsuspended. This is fully reversible. Existing jobs and applications remain intact.`
+            : `"${pendingAction?.user.full_name || pendingAction?.user.email}" will regain normal access immediately.`
+        }
+        confirmLabel={pendingAction?.nextStatus === 'suspended' ? 'Suspend' : 'Unsuspend'}
+        variant={pendingAction?.nextStatus === 'suspended' ? 'danger' : 'primary'}
+        confirming={busy}
+        confirmDisabled={!isValidModerationReason(reason)}
+        onConfirm={handleConfirm}
+        onCancel={() => setPendingAction(null)}
+      >
+        {actionError && <p className="mb-2 text-xs font-semibold text-red-600">{actionError}</p>}
+        <ModerationReasonInput value={reason} onChange={setReason} />
+      </ConfirmDialog>
     </div>
   )
 }

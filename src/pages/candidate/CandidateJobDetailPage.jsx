@@ -1,28 +1,39 @@
 import { useState } from 'react'
-import { ArrowLeft, Bookmark, MapPin, Laptop, CheckCircle2, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Bookmark, Flag, MapPin, Laptop, CheckCircle2, AlertCircle } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import VerifiedBadge from '../../components/ui/VerifiedBadge'
 import StatusBadge from '../../components/ui/StatusBadge'
 import Button from '../../components/ui/Button'
 import EmptyState from '../../components/ui/EmptyState'
 import MatchScoreCard from '../../components/shared/MatchScoreCard'
+import CompanyInfoCard from '../../components/shared/CompanyInfoCard'
+import ReportJobDialog from '../../components/candidate/ReportJobDialog'
+import useAuth from '../../hooks/useAuth'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import useJob from '../../hooks/useJob'
 import useJobMatch from '../../hooks/useJobMatch'
+import useCompanySummary from '../../hooks/useCompanySummary'
 import useMyApplications from '../../hooks/useMyApplications'
 import useSavedJobs from '../../hooks/useSavedJobs'
+import { createReport } from '../../services/reportService'
 import { formatSalary, formatRelativeTime } from '../../lib/format'
 
 export default function CandidateJobDetailPage() {
   const { jobId } = useParams()
+  const { user } = useAuth()
   const { job, loading, error } = useJob(jobId)
   const { match, loading: matchLoading, error: matchError } = useJobMatch(jobId)
+  const { summary: companySummary, loading: companySummaryLoading } = useCompanySummary(job?.employerId)
   const { hasApplied, getApplication, applyToJob } = useMyApplications()
   const { isSaved, saveJob, unsaveJob } = useSavedJobs()
 
   const [applying, setApplying] = useState(false)
   const [applyError, setApplyError] = useState('')
   const [savingBookmark, setSavingBookmark] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportSubmitting, setReportSubmitting] = useState(false)
+  const [reportError, setReportError] = useState('')
+  const [reportSubmitted, setReportSubmitted] = useState(false)
 
   useDocumentTitle(job?.title || 'Job Details')
 
@@ -36,6 +47,21 @@ export default function CandidateJobDetailPage() {
       setApplyError(err.message || 'Something went wrong. Please try again.')
     } finally {
       setApplying(false)
+    }
+  }
+
+  async function handleSubmitReport({ reason, description }) {
+    if (!job || !user) return
+    setReportSubmitting(true)
+    setReportError('')
+    try {
+      await createReport({ reporterId: user.uid, targetType: 'job', targetId: job.id, reason, description })
+      setReportOpen(false)
+      setReportSubmitted(true)
+    } catch (err) {
+      setReportError(err.message || 'Something went wrong. Please try again.')
+    } finally {
+      setReportSubmitting(false)
     }
   }
 
@@ -92,16 +118,33 @@ export default function CandidateJobDetailPage() {
           <ArrowLeft size={19} />
         </Link>
         <span className="text-sm font-bold text-navy-900">Job Details</span>
-        <button
-          type="button"
-          onClick={handleToggleSave}
-          disabled={savingBookmark}
-          aria-label={saved ? 'Unsave job' : 'Save job'}
-          className={saved ? 'text-primary-600' : 'text-navy-400'}
-        >
-          <Bookmark size={18} fill={saved ? 'currentColor' : 'none'} />
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setReportOpen(true)}
+            aria-label="Report this job"
+            title="Report this job"
+            className="text-navy-400 hover:text-red-500"
+          >
+            <Flag size={17} />
+          </button>
+          <button
+            type="button"
+            onClick={handleToggleSave}
+            disabled={savingBookmark}
+            aria-label={saved ? 'Unsave job' : 'Save job'}
+            className={saved ? 'text-primary-600' : 'text-navy-400'}
+          >
+            <Bookmark size={18} fill={saved ? 'currentColor' : 'none'} />
+          </button>
+        </div>
       </div>
+
+      {reportSubmitted && (
+        <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-success-50 px-3 py-2 text-xs font-semibold text-success-700">
+          <CheckCircle2 size={13} /> Report submitted. Our admin team will review it.
+        </p>
+      )}
 
       <div className="mt-4 flex items-center gap-3">
         {job.companyLogoUrl ? (
@@ -183,6 +226,8 @@ export default function CandidateJobDetailPage() {
         </div>
       )}
 
+      <CompanyInfoCard summary={companySummary} loading={companySummaryLoading} />
+
       {applyError && (
         <p className="mb-3 flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
           <AlertCircle size={13} /> {applyError}
@@ -193,11 +238,23 @@ export default function CandidateJobDetailPage() {
         <Button className="w-full" variant="secondary" disabled icon={CheckCircle2}>
           Applied
         </Button>
+      ) : job.status !== 'active' ? (
+        <p className="rounded-lg bg-slate-100 px-3 py-2.5 text-center text-xs font-semibold text-navy-500">
+          This job is no longer accepting applications.
+        </p>
       ) : (
         <Button className="w-full" onClick={handleApply} disabled={applying}>
           {applying ? 'Applying...' : 'Apply Now'}
         </Button>
       )}
+
+      <ReportJobDialog
+        open={reportOpen}
+        onSubmit={handleSubmitReport}
+        onCancel={() => setReportOpen(false)}
+        submitting={reportSubmitting}
+        error={reportError}
+      />
     </div>
   )
 }

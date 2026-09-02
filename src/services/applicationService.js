@@ -10,6 +10,7 @@ import {
   writeBatch,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
+import { createNotification } from './notificationService'
 
 const applicationsRef = collection(db, 'applications')
 
@@ -42,7 +43,11 @@ export async function applyToJob({ job, candidateId, candidateName, candidateEma
     // Batched so the application is created and the job's applicationCount
     // is incremented atomically — that counter is what lets the employer
     // delete rule guarantee "only when zero applications" server-side,
-    // not just as a client-side check.
+    // not just as a client-side check. The candidate's own confirmation
+    // notification rides in the SAME batch (its create rule only checks
+    // request.auth.uid, no cross-document dependency, so batch timing
+    // doesn't matter for it) — application, counter, and confirmation
+    // either all happen or none do.
     const batch = writeBatch(db)
     batch.set(ref, {
       candidateId,
@@ -57,6 +62,16 @@ export async function applyToJob({ job, candidateId, candidateName, candidateEma
       updatedAt: serverTimestamp(),
     })
     batch.update(doc(db, 'jobs', job.id), { applicationCount: increment(1) })
+    batch.set(doc(collection(db, 'notifications')), {
+      recipientId: candidateId,
+      type: 'application_submitted_confirmation',
+      title: 'Application Submitted',
+      message: `Your application for ${job.title} was submitted successfully.`,
+      relatedJobId: job.id,
+      relatedApplicationId: id,
+      read: false,
+      createdAt: serverTimestamp(),
+    })
     await batch.commit()
   } catch (err) {
     // The security rules only permit *creating* this doc, never updating
@@ -71,6 +86,23 @@ export async function applyToJob({ job, candidateId, candidateName, candidateEma
     }
     throw err
   }
+
+  // The employer's "new application" notification MUST reference an
+  // already-persisted application (see firestore.rules) — it can only be
+  // written now, after the batch above has actually committed. A failure
+  // here doesn't undo or affect the application itself, which already
+  // succeeded; it's logged rather than surfaced so the candidate's
+  // successful apply is never blocked by a notification-only failure.
+  createNotification({
+    recipientId: job.employerId,
+    type: 'new_application',
+    title: 'New Application',
+    message: `A candidate has applied for your ${job.title} job.`,
+    relatedJobId: job.id,
+    relatedApplicationId: id,
+  }).catch((err) => {
+    console.error('[notifications] failed to notify employer of new application', err)
+  })
 
   return getApplicationForJob(candidateId, job.id)
 }

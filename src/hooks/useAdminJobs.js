@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import useAuth from './useAuth'
 import { listAllJobs } from '../services/adminService'
+import { setJobModerationStatus } from '../services/moderationService'
 
 export default function useAdminJobs() {
   const { user, role } = useAuth()
@@ -38,5 +39,17 @@ export default function useAdminJobs() {
 
   const refetch = useCallback(() => setReloadKey((k) => k + 1), [])
 
-  return { jobs, loading, error, refetch }
+  const setModerationStatus = useCallback(
+    async (jobId, status, reason) => {
+      if (!user) throw new Error('You must be signed in.')
+      await setJobModerationStatus(user.uid, jobId, status, reason)
+      setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status } : j)))
+    },
+    [user]
+  )
+
+  const closeJobAsAdmin = useCallback((jobId, reason) => setModerationStatus(jobId, 'closed', reason), [setModerationStatus])
+  const reopenJobAsAdmin = useCallback((jobId, reason) => setModerationStatus(jobId, 'active', reason), [setModerationStatus])
+
+  return { jobs, loading, error, refetch, closeJobAsAdmin, reopenJobAsAdmin }
 }

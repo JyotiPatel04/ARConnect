@@ -1,29 +1,44 @@
-import { Phone, Mail, Pencil, FileText, LogOut } from 'lucide-react'
+import { Phone, Mail, FileText, ExternalLink, LogOut, AlertCircle } from 'lucide-react'
 import Button from '../../components/ui/Button'
 import ProfileForm from '../../components/candidate/ProfileForm'
+import ProfileCompletionMeter from '../../components/shared/ProfileCompletionMeter'
+import EmptyState from '../../components/ui/EmptyState'
 import useAuth from '../../hooks/useAuth'
 import useCandidateProfile from '../../hooks/useCandidateProfile'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { getInitials } from '../../lib/format'
+import { calculateProfileCompletion } from '../../lib/profileCompletion'
 
 export default function CandidateProfilePage() {
   useDocumentTitle('Profile')
-  const { profile, user, signOut } = useAuth()
+  const { profile, user, signOut, updateProfile } = useAuth()
   const {
-    profile: matchProfile,
-    loading: matchProfileLoading,
-    saving: matchProfileSaving,
+    profile: candidateProfile,
+    loading: candidateProfileLoading,
+    error: candidateProfileError,
+    saving,
     saveProfile,
   } = useCandidateProfile()
 
-  // No explicit navigate() here — signing out clears the session, and
-  // ProtectedRoute reacts to that itself and redirects to /auth/login.
-  // An explicit navigate('/') here used to race that reactive redirect
-  // and lose every time, which is why this doesn't try to pick the
-  // destination itself.
+  // ProtectedRoute reacts to sign-out itself and redirects to /auth/login —
+  // an explicit navigate('/') here used to race that and lose every time.
   async function handleSignOut() {
     await signOut()
   }
+
+  // Two independent Firestore writes (users/{uid} for name/phone,
+  // candidateProfiles/{uid} for everything else) rather than one atomic
+  // batch — simpler, and consistent with how every other write in this
+  // app is scoped to a single document/service. If the first succeeds and
+  // the second fails, ProfileForm's error banner surfaces it and the user
+  // just saves again.
+  async function handleSave(values) {
+    const { fullName, phone, ...profileFields } = values
+    await updateProfile({ fullName, phone })
+    await saveProfile(profileFields)
+  }
+
+  const completion = calculateProfileCompletion(candidateProfile)
 
   return (
     <div>
@@ -40,24 +55,52 @@ export default function CandidateProfilePage() {
             <Phone size={12} /> {profile.phone}
           </p>
         )}
-        <button className="mt-2 flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-navy-700">
-          <Pencil size={12} /> Edit Profile
-        </button>
       </div>
+
+      {!candidateProfileLoading && !candidateProfileError && (
+        <div className="mt-5">
+          <ProfileCompletionMeter completion={completion} />
+        </div>
+      )}
 
       <div className="mt-5 rounded-2xl border border-slate-100 bg-white p-4 shadow-soft">
         <div className="flex items-center justify-between">
           <p className="text-[13px] font-bold text-navy-900">Resume</p>
           <FileText size={16} className="text-primary-600" />
         </div>
-        <p className="mt-1 text-xs text-navy-500">No resume uploaded yet</p>
+        {candidateProfile?.resumeLink ? (
+          <a
+            href={candidateProfile.resumeLink}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="mt-1 flex items-center gap-1 text-xs font-semibold text-primary-600 hover:underline"
+          >
+            View resume <ExternalLink size={12} />
+          </a>
+        ) : (
+          <p className="mt-1 text-xs text-navy-500">
+            No resume link added yet — add one in the Resume section below.
+          </p>
+        )}
       </div>
 
       <div className="mt-5 rounded-2xl border border-slate-100 bg-white p-4 shadow-soft">
-        {matchProfileLoading ? (
-          <p className="text-sm text-navy-400">Loading profile...</p>
+        {candidateProfileLoading ? (
+          <p className="py-4 text-center text-sm text-navy-400">Loading profile...</p>
+        ) : candidateProfileError ? (
+          <EmptyState
+            icon={AlertCircle}
+            tone="error"
+            title="Couldn't load your profile"
+            subtitle="Please check your connection and try again."
+          />
         ) : (
-          <ProfileForm profile={matchProfile} onSave={saveProfile} saving={matchProfileSaving} />
+          <ProfileForm
+            userProfile={profile}
+            candidateProfile={candidateProfile}
+            onSave={handleSave}
+            saving={saving}
+          />
         )}
       </div>
 

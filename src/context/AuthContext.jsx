@@ -78,6 +78,26 @@ export function AuthProvider({ children }) {
     await firebaseSignOut(auth)
   }, [])
 
+  // Deliberately only ever accepts this fixed, known-safe field set — never
+  // an arbitrary object — so this can't become a back door for changing
+  // `role` (the security rules would reject that write anyway, but there's
+  // no reason to even offer the shape). Firestore rules still are the real
+  // enforcement; this is just keeping the client-side API honest about
+  // what it's for.
+  const updateProfile = useCallback(
+    async ({ fullName, phone }) => {
+      if (!user) throw new Error('You must be signed in.')
+      const fields = {
+        full_name: fullName,
+        phone: phone || null,
+        updated_at: serverTimestamp(),
+      }
+      await setDoc(doc(db, 'users', user.uid), fields, { merge: true })
+      setProfile((prev) => (prev ? { ...prev, full_name: fullName, phone: phone || null } : prev))
+    },
+    [user]
+  )
+
   const resetPassword = useCallback(async (email) => {
     await sendPasswordResetEmail(auth, email, {
       url: `${window.location.origin}/auth/login`,
@@ -93,6 +113,7 @@ export function AuthProvider({ children }) {
     signUp,
     signIn,
     signOut,
+    updateProfile,
     resetPassword,
   }
 
