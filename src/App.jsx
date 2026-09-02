@@ -11,6 +11,7 @@ import AuthLayout from './layouts/AuthLayout'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
+import AdminLoginPage from './pages/auth/AdminLoginPage'
 
 import CandidateLayout from './layouts/CandidateLayout'
 import CandidateOnboardingPage from './pages/candidate/CandidateOnboardingPage'
@@ -57,6 +58,14 @@ function App() {
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
         <Route path="forgot-password" element={<ForgotPasswordPage />} />
+      </Route>
+
+      {/* Internal admin entry point — deliberately NOT nested under /auth
+          and NOT linked from any public nav/footer/candidate/employer UI.
+          Reuses AuthLayout for consistent chrome; reachable only by
+          knowing the exact URL. */}
+      <Route element={<AuthLayout />}>
+        <Route path="/admin/login" element={<AdminLoginPage />} />
       </Route>
 
       <Route element={<ProtectedRoute allowedRoles={['candidate']} />}>
