@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import useAuth from './useAuth'
-import { applyToJob as applyToJobService, listMyApplications } from '../services/applicationService'
+import {
+  applyToJob as applyToJobService,
+  listMyApplications,
+  withdrawApplication as withdrawApplicationService,
+} from '../services/applicationService'
 
 export default function useMyApplications() {
   const { user, profile } = useAuth()
@@ -59,12 +63,26 @@ export default function useMyApplications() {
     [user, profile]
   )
 
+  // Looks the application up from already-loaded state, same as the
+  // employer-side updateStatus — no extra read needed, and it keeps the
+  // caller from having to pass the full application object around.
+  const withdraw = useCallback(
+    async (applicationId) => {
+      const current = applications.find((a) => a.id === applicationId)
+      if (!current) return
+      await withdrawApplicationService(current)
+      setApplications((prev) => prev.map((a) => (a.id === applicationId ? { ...a, status: 'withdrawn' } : a)))
+    },
+    [applications]
+  )
+
   return {
     applications,
     loading,
     error,
     refetch,
     applyToJob,
+    withdraw,
     hasApplied: (jobId) => applicationByJobId.has(jobId),
     getApplication: (jobId) => applicationByJobId.get(jobId),
   }

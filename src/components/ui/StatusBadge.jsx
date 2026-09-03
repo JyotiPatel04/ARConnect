@@ -7,6 +7,7 @@ const styles = {
   hired: 'bg-success-50 text-success-700',
   rejected: 'bg-red-50 text-red-600',
   pending: 'bg-amber-50 text-amber-700',
+  withdrawn: 'bg-slate-100 text-navy-400',
 }
 
 const labels = {
@@ -18,6 +19,7 @@ const labels = {
   hired: 'Hired',
   rejected: 'Not Selected',
   pending: 'Pending',
+  withdrawn: 'Withdrawn',
 }
 
 export default function StatusBadge({ status = 'applied', label }) {

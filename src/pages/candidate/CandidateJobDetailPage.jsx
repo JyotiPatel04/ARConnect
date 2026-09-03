@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, Bookmark, Flag, MapPin, Laptop, CheckCircle2, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Bookmark, Flag, MapPin, Laptop, CheckCircle2, XCircle, AlertCircle } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import VerifiedBadge from '../../components/ui/VerifiedBadge'
 import StatusBadge from '../../components/ui/StatusBadge'
@@ -109,6 +109,7 @@ export default function CandidateJobDetailPage() {
 
   const applied = hasApplied(job.id)
   const application = getApplication(job.id)
+  const withdrawn = application?.status === 'withdrawn'
   const saved = isSaved(job.id)
 
   return (
@@ -234,7 +235,16 @@ export default function CandidateJobDetailPage() {
         </p>
       )}
 
-      {applied ? (
+      {withdrawn ? (
+        // Phase 12 fix: the composite candidateId_jobId application document
+        // still exists after a withdrawal (see firestore.rules), so
+        // hasApplied() alone can't distinguish "applied" from "withdrew" —
+        // check the actual status instead. Re-apply is deliberately not
+        // offered here in this phase (see report).
+        <Button className="w-full" variant="secondary" disabled icon={XCircle}>
+          Withdrawn
+        </Button>
+      ) : applied ? (
         <Button className="w-full" variant="secondary" disabled icon={CheckCircle2}>
           Applied
         </Button>

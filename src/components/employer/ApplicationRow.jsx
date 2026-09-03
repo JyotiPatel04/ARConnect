@@ -94,12 +94,22 @@ export default function ApplicationRow({ application, onStatusChange, updating, 
             <p>{interview.scheduledAt?.toDate?.().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>
             {isActive && (
               <div className="mt-1.5 flex flex-wrap gap-1.5">
-                <Button size="sm" variant="secondary" icon={Pencil} onClick={() => setDialogOpen(true)} disabled={saving}>
-                  Edit
-                </Button>
-                <Button size="sm" variant="success" icon={CheckCircle2} onClick={complete} disabled={saving}>
-                  Mark Completed
-                </Button>
+                {/* Phase 13 UX fix: Edit and Mark Completed are hidden once
+                    the parent application is withdrawn — the Firestore
+                    rules already deny both writes server-side (the
+                    authoritative gate); this just keeps the UI from
+                    offering actions that can no longer succeed. Cancel
+                    stays available, matching what the rules still allow. */}
+                {application.status !== 'withdrawn' && (
+                  <Button size="sm" variant="secondary" icon={Pencil} onClick={() => setDialogOpen(true)} disabled={saving}>
+                    Edit
+                  </Button>
+                )}
+                {application.status !== 'withdrawn' && (
+                  <Button size="sm" variant="success" icon={CheckCircle2} onClick={complete} disabled={saving}>
+                    Mark Completed
+                  </Button>
+                )}
                 <Button size="sm" variant="danger" icon={XCircle} onClick={() => setConfirmCancel(true)} disabled={saving}>
                   Cancel
                 </Button>
@@ -108,26 +118,40 @@ export default function ApplicationRow({ application, onStatusChange, updating, 
           </div>
         )}
 
-        {!interviewLoading && !isActive && (
+        {/* Phase 12 fix: a withdrawn application has nothing left to
+            interview for — scheduling a NEW interview is hidden, same
+            pattern as the status dropdown below. An interview scheduled
+            before the withdrawal is untouched and still manageable above. */}
+        {!interviewLoading && !isActive && application.status !== 'withdrawn' && (
           <Button size="sm" variant="secondary" icon={CalendarClock} className="mt-2" onClick={() => setDialogOpen(true)}>
             Schedule Interview
           </Button>
         )}
       </div>
 
-      <select
-        value={application.status}
-        onChange={(e) => onStatusChange(application.id, e.target.value)}
-        disabled={updating}
-        aria-label={`Status for ${application.candidateName}`}
-        className="w-full shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11.5px] font-semibold text-navy-700 disabled:opacity-60 sm:w-auto"
-      >
-        {APPLICATION_STATUSES.map((s) => (
-          <option key={s} value={s}>
-            {STATUS_LABELS[s]}
-          </option>
-        ))}
-      </select>
+      {application.status === 'withdrawn' ? (
+        // Phase 12: withdrawn is candidate-initiated and final — there's
+        // nothing left for the employer to decide, so the editable status
+        // dropdown is replaced with a plain, non-interactive label rather
+        // than offering choices the security rules would reject anyway.
+        <span className="w-full shrink-0 rounded-lg bg-slate-100 px-2.5 py-1.5 text-center text-[11.5px] font-semibold text-navy-400 sm:w-auto">
+          Withdrawn
+        </span>
+      ) : (
+        <select
+          value={application.status}
+          onChange={(e) => onStatusChange(application.id, e.target.value)}
+          disabled={updating}
+          aria-label={`Status for ${application.candidateName}`}
+          className="w-full shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11.5px] font-semibold text-navy-700 disabled:opacity-60 sm:w-auto"
+        >
+          {APPLICATION_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABELS[s]}
+            </option>
+          ))}
+        </select>
+      )}
 
       <ScheduleInterviewDialog
         open={dialogOpen}

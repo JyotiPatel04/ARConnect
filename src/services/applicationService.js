@@ -6,6 +6,7 @@ import {
   increment,
   query,
   serverTimestamp,
+  updateDoc,
   where,
   writeBatch,
 } from 'firebase/firestore'
@@ -105,4 +106,27 @@ export async function applyToJob({ job, candidateId, candidateName, candidateEma
   })
 
   return getApplicationForJob(candidateId, job.id)
+}
+
+// Only ever called on the candidate's own application, and only while it's
+// still in an open state (see firestore.rules — the rule independently
+// re-verifies both of those, this isn't a trust boundary). Every field
+// except status/updatedAt is left untouched, exactly like the employer's
+// updateApplicationStatus below.
+export async function withdrawApplication(application) {
+  await updateDoc(doc(db, 'applications', application.id), { status: 'withdrawn', updatedAt: serverTimestamp() })
+
+  // Same pattern as every other notification in this app: written as a
+  // SEPARATE call after the real action has already committed, and a
+  // failure here never undoes or blocks the withdrawal itself.
+  createNotification({
+    recipientId: application.employerId,
+    type: 'application_withdrawn',
+    title: 'Application Withdrawn',
+    message: `${application.candidateName} withdrew their application for ${application.jobTitle}.`,
+    relatedJobId: application.jobId,
+    relatedApplicationId: application.id,
+  }).catch((err) => {
+    console.error('[notifications] failed to notify employer of withdrawal', err)
+  })
 }

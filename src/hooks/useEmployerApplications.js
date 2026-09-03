@@ -45,7 +45,7 @@ export default function useEmployerApplications() {
   const updateStatus = useCallback(
     async (applicationId, status) => {
       const current = applications.find((a) => a.id === applicationId)
-      if (!current || current.status === status) return
+      if (!current || current.status === status || current.status === 'withdrawn') return
       await updateApplicationStatus(current, status)
       setApplications((prev) => prev.map((a) => (a.id === applicationId ? { ...a, status } : a)))
     },

@@ -230,22 +230,61 @@ service cloud.firestore {
       // field, including candidateId/jobId/employerId, is checked
       // explicitly immutable here (rather than via a generic
       // diff()/hasOnly() field-allowlist), so they can never be touched by
-      // anyone, including the owning employer. Candidates have no update
-      // path at all, so they can never touch their own application's
-      // status either.
-      allow update: if isSignedIn()
-        && isNotSuspended()
-        && callerRole() == 'employer'
-        && resource.data.employerId == request.auth.uid
-        && request.resource.data.status in ['applied', 'reviewing', 'shortlisted', 'interview', 'rejected', 'hired']
-        && request.resource.data.candidateId == resource.data.candidateId
-        && request.resource.data.jobId == resource.data.jobId
-        && request.resource.data.employerId == resource.data.employerId
-        && request.resource.data.candidateName == resource.data.candidateName
-        && request.resource.data.candidateEmail == resource.data.candidateEmail
-        && request.resource.data.jobTitle == resource.data.jobTitle
-        && request.resource.data.companyName == resource.data.companyName
-        && request.resource.data.appliedAt == resource.data.appliedAt;
+      // anyone, including the owning employer. Phase 12: once a candidate
+      // has withdrawn, the employer branch is no longer available at all
+      // (resource.data.status != 'withdrawn') — there's nothing left for
+      // an employer to decide on a withdrawn application.
+      //
+      // Phase 14: deliberately NO from-state lock among the six employer
+      // statuses below (applied/reviewing/shortlisted/interview/rejected/
+      // hired) — unlike interviews.update's terminal-state lock, the
+      // employer UI (ApplicationRow, used on 3 pages) already lets an
+      // employer move freely in either direction between all six, e.g. to
+      // undo a mis-click or reconsider a rejected/hired candidate. That's
+      // existing, intentional product behavior, not a missing guard —
+      // confirmed by inspection before adding this note. Only `withdrawn`
+      // is actually terminal here (see above and the candidate branch
+      // below).
+      allow update: if isSignedIn() && (
+        (
+          isNotSuspended()
+          && callerRole() == 'employer'
+          && resource.data.employerId == request.auth.uid
+          && resource.data.status != 'withdrawn'
+          && request.resource.data.status in ['applied', 'reviewing', 'shortlisted', 'interview', 'rejected', 'hired']
+          && request.resource.data.candidateId == resource.data.candidateId
+          && request.resource.data.jobId == resource.data.jobId
+          && request.resource.data.employerId == resource.data.employerId
+          && request.resource.data.candidateName == resource.data.candidateName
+          && request.resource.data.candidateEmail == resource.data.candidateEmail
+          && request.resource.data.jobTitle == resource.data.jobTitle
+          && request.resource.data.companyName == resource.data.companyName
+          && request.resource.data.appliedAt == resource.data.appliedAt
+        )
+        ||
+        (
+          // Phase 12: a candidate may withdraw their OWN application — the
+          // ONLY status transition this branch permits is to 'withdrawn',
+          // and only from a still-open state (never from rejected/hired,
+          // which are final employer decisions, and never from an already-
+          // withdrawn application). Every other field is pinned exactly
+          // like the employer branch above, so this can never become a
+          // back door for a candidate to touch anything else about their
+          // own application.
+          isNotSuspended()
+          && resource.data.candidateId == request.auth.uid
+          && resource.data.status in ['applied', 'reviewing', 'shortlisted', 'interview']
+          && request.resource.data.status == 'withdrawn'
+          && request.resource.data.candidateId == resource.data.candidateId
+          && request.resource.data.jobId == resource.data.jobId
+          && request.resource.data.employerId == resource.data.employerId
+          && request.resource.data.candidateName == resource.data.candidateName
+          && request.resource.data.candidateEmail == resource.data.candidateEmail
+          && request.resource.data.jobTitle == resource.data.jobTitle
+          && request.resource.data.companyName == resource.data.companyName
+          && request.resource.data.appliedAt == resource.data.appliedAt
+        )
+      );
 
       allow delete: if false;
     }
@@ -402,6 +441,17 @@ service cloud.firestore {
           && interviewFor(request.resource.data.relatedInterviewId).employerId == request.auth.uid
           && request.resource.data.recipientId == interviewFor(request.resource.data.relatedInterviewId).candidateId
         )
+        ||
+        // 5. Phase 12: a candidate notifies the REAL employer that they
+        //    withdrew a REAL application they actually own — same
+        //    applicationFor()-verified pattern as branch 2, mirrored.
+        (
+          callerRole() == 'candidate'
+          && request.resource.data.type == 'application_withdrawn'
+          && applicationFor(request.resource.data.relatedApplicationId).candidateId == request.auth.uid
+          && applicationFor(request.resource.data.relatedApplicationId).jobId == request.resource.data.relatedJobId
+          && request.resource.data.recipientId == applicationFor(request.resource.data.relatedApplicationId).employerId
+        )
       );
 
       // Only the recipient may ever touch their own notification, and
@@ -519,11 +569,15 @@ service cloud.firestore {
       // in this file. This is what makes "spoof candidateId" or "schedule
       // for an application you don't own" structurally impossible rather
       // than a check that has to get every field right.
+      // Phase 13: a withdrawn application has nothing left to interview
+      // for — the same applicationFor() read already used for ownership
+      // also rules out scheduling a brand-new interview against it.
       allow create: if isSignedIn()
         && isNotSuspended()
         && callerRole() == 'employer'
         && request.resource.data.employerId == request.auth.uid
         && applicationFor(request.resource.data.applicationId).employerId == request.auth.uid
+        && applicationFor(request.resource.data.applicationId).status != 'withdrawn'
         && request.resource.data.candidateId == applicationFor(request.resource.data.applicationId).candidateId
         && request.resource.data.jobId == applicationFor(request.resource.data.applicationId).jobId
         && request.resource.data.status == 'scheduled'
@@ -534,6 +588,21 @@ service cloud.firestore {
       // pinned explicitly equal, so an employer can freely change the
       // schedule, type, or status of their OWN interview but can never
       // reassign it to a different application, candidate, or job.
+      //
+      // Phase 13 adds two independent status-transition constraints,
+      // combined as OR-branches (same style as every multi-case rule in
+      // this file) rather than a single tangled condition:
+      //
+      //   1. If the parent application has been withdrawn, the only
+      //      surviving action is cancelling the interview — no reschedule/
+      //      field edit (status would stay 'scheduled', which this branch
+      //      does not permit) and no marking it completed.
+      //   2. Otherwise, status may only move forward: 'scheduled' can
+      //      become 'completed' or 'cancelled', or stay 'scheduled' (a
+      //      plain edit). Once 'completed' or 'cancelled', status can
+      //      never change again in either direction — closes the Phase 10
+      //      gap where a terminal interview status wasn't actually
+      //      terminal at the rules level.
       allow update: if isSignedIn()
         && isNotSuspended()
         && callerRole() == 'employer'
@@ -543,7 +612,22 @@ service cloud.firestore {
         && request.resource.data.applicationId == resource.data.applicationId
         && request.resource.data.jobId == resource.data.jobId
         && request.resource.data.createdAt == resource.data.createdAt
-        && validInterviewFields(request.resource.data);
+        && validInterviewFields(request.resource.data)
+        && (
+          (
+            applicationFor(resource.data.applicationId).status == 'withdrawn'
+            && resource.data.status == 'scheduled'
+            && request.resource.data.status == 'cancelled'
+          )
+          ||
+          (
+            applicationFor(resource.data.applicationId).status != 'withdrawn'
+            && (
+              request.resource.data.status == resource.data.status
+              || (resource.data.status == 'scheduled' && request.resource.data.status in ['completed', 'cancelled'])
+            )
+          )
+        );
 
       // Never hard-deleted — cancelling sets status: 'cancelled' instead,
       // preserving the record (Part 10: "existing interview data must
