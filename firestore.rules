@@ -66,8 +66,19 @@ service cloud.firestore {
       // Only ever created by the client immediately after signup, for
       // themselves, and only ever as 'candidate' or 'employer' — 'admin'
       // can never be set this way, no matter what the client sends.
+      //
+      // Phase 17: email is pinned to request.auth.token.email — the real,
+      // Firebase-Auth-verified address tied to this account — rather than
+      // trusted as free client text. Without this, a client could write ANY
+      // string into email (e.g. someone else's real address), and every
+      // downstream consumer that trusts users/{uid}.email as "this
+      // person's real identity" (applications.candidateEmail below, in
+      // particular) would inherit that spoof. This app never changes a
+      // user's email after signup, so pinning it here and on every owner
+      // update below has no legitimate-use cost.
       allow create: if isOwner(userId)
-        && request.resource.data.role in ['candidate', 'employer'];
+        && request.resource.data.role in ['candidate', 'employer']
+        && request.resource.data.email == request.auth.token.email;
 
       // Any other field (full_name, phone, avatar_url, ...) may be updated
       // by the owner, but role must stay exactly what it already was —
@@ -83,6 +94,11 @@ service cloud.firestore {
         (
           isOwner(userId)
           && request.resource.data.role == resource.data.role
+          // Phase 17: same email-pinning rationale as create above, applied
+          // to every subsequent update too — otherwise create-time pinning
+          // alone would be pointless, since the owner could just spoof it
+          // in a later write instead.
+          && request.resource.data.email == request.auth.token.email
           && request.resource.data.get('moderationStatus', 'active') == resource.data.get('moderationStatus', 'active')
         )
         ||
@@ -125,23 +141,49 @@ service cloud.firestore {
     match /jobs/{jobId} {
       allow read: if true;
 
+      // Phase 17: posting a NEW job additionally requires a verified email
+      // — this is the one place email verification is enforced at the
+      // rules layer, scoped narrowly to job creation (not editing/closing/
+      // reopening an existing job, which stays available to already-posted
+      // employers regardless of this flag). request.auth.token.email_verified
+      // reflects Firebase Auth's own server-side verification state, not a
+      // client claim, so this can't be spoofed by sending a different value.
       allow create: if isSignedIn()
         && isNotSuspended()
         && callerRole() == 'employer'
+        && request.auth.token.email_verified == true
         && request.resource.data.employerId == request.auth.uid
         && request.resource.data.applicationCount == 0;
 
       allow update: if isSignedIn() && (
-        // The owning employer may change anything (title, salary, status,
-        // ...) EXCEPT employerId — ownership can never be reassigned, even
-        // by the current owner, even accidentally. A suspended employer
-        // loses this path entirely (Phase 9) — they can't edit, close, or
-        // reopen their own jobs while suspended; only admin still can.
+        // The owning employer may change anything (title, salary, ...)
+        // EXCEPT employerId — ownership can never be reassigned, even by
+        // the current owner, even accidentally. A suspended employer loses
+        // this path entirely (Phase 9) — they can't edit, close, or reopen
+        // their own jobs while suspended; only admin still can.
+        //
+        // Phase 17 (P0 fix): applicationCount and status are now pinned
+        // the same way the admin branch below already correctly pins them
+        // — applicationCount can NEVER be touched by the employer directly
+        // (it only ever moves via the candidate-application branch's
+        // atomic +1, further down), and status may only move within the
+        // same ['active','closed'] enum the employer's own Close/Reopen
+        // buttons already use, never to an arbitrary value. Before this
+        // fix, neither field was constrained at all here: an employer
+        // could call updateDoc({applicationCount: 0}) directly (bypassing
+        // the UI, which never sends this field) and then hard-delete a job
+        // that still had real applications attached — silently orphaning
+        // that candidate data and defeating the delete rule's own
+        // "applicationCount == 0" guarantee below. Close/reopen (status)
+        // remains fully working — only pinned to the same valid values the
+        // UI has always used, not frozen equal.
         (
           callerRole() == 'employer'
           && isNotSuspended()
           && resource.data.employerId == request.auth.uid
           && request.resource.data.employerId == resource.data.employerId
+          && request.resource.data.applicationCount == resource.data.applicationCount
+          && request.resource.data.status in ['active', 'closed']
         )
         ||
         // The only other party ever allowed to touch a job document is a

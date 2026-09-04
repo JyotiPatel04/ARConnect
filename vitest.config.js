@@ -10,7 +10,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/lib/**/*.test.js', 'tests/rules/**/*.test.js'],
+    include: ['src/lib/**/*.test.js', 'src/components/**/*.test.js', 'src/pages/**/*.test.js', 'tests/rules/**/*.test.js'],
     // firebase.json's emulators config runs in singleProjectMode -- every
     // rules test file shares ONE underlying Firestore/Auth namespace no
     // matter what projectId string it passes, so running rules-test files

@@ -5,8 +5,36 @@
 
 export const PASSWORD = 'E2eTest123!'
 
+const AUTH_EMULATOR = 'http://127.0.0.1:9099'
+const PROJECT_ID = 'arconnect-7337f'
+
 export function uniqueEmail(tag) {
   return `e2e-${tag}-${Date.now()}-${Math.floor(Math.random() * 10000)}@example.com`
+}
+
+// Firebase Auth Emulator only -- completes the email-verification flow a
+// real user triggers by clicking the link in their inbox, without any real
+// SMTP involved. The emulator exposes pending "out of band" action codes
+// (verification, password reset, ...) over a REST endpoint precisely so
+// automated tests can drive this; this endpoint doesn't exist against
+// production Firebase Auth, so this helper can never reach anything but
+// the local emulator (host is hardcoded to 127.0.0.1).
+export async function verifyEmailViaEmulator(email) {
+  const listRes = await fetch(`${AUTH_EMULATOR}/emulator/v1/projects/${PROJECT_ID}/oobCodes`)
+  const { oobCodes } = await listRes.json()
+  const pending = oobCodes.filter((c) => c.email === email && c.requestType === 'VERIFY_EMAIL')
+  const match = pending[pending.length - 1]
+  if (!match) throw new Error(`verifyEmailViaEmulator: no pending verification code found for ${email}`)
+
+  const applyRes = await fetch(
+    `${AUTH_EMULATOR}/identitytoolkit.googleapis.com/v1/accounts:update?key=fake-api-key`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oobCode: match.oobCode }),
+    }
+  )
+  if (!applyRes.ok) throw new Error(`verifyEmailViaEmulator: failed to apply verification code for ${email}`)
 }
 
 export async function registerCandidate(page, { email, fullName = 'E2E Candidate' } = {}) {
@@ -20,6 +48,12 @@ export async function registerCandidate(page, { email, fullName = 'E2E Candidate
   return finalEmail
 }
 
+// Verifies email via the emulator as part of registration -- Phase 17
+// gates job posting on a verified email (both in the UI and in
+// firestore.rules), so every OTHER spec that just wants a normal,
+// already-verified employer can keep using this helper unchanged.
+// email-verification.spec.js deliberately does its own registration
+// instead, so it can observe the gate in its genuinely-unverified state.
 export async function registerEmployer(page, { email, fullName = 'E2E Employer' } = {}) {
   const finalEmail = email || uniqueEmail('emp')
   await page.goto('/auth/register', { waitUntil: 'domcontentloaded' })
@@ -29,6 +63,7 @@ export async function registerEmployer(page, { email, fullName = 'E2E Employer' 
   await page.getByLabel('Password').fill(PASSWORD)
   await page.getByRole('button', { name: 'Create Account' }).click()
   await page.waitForURL(/\/employer/, { timeout: 15000 })
+  await verifyEmailViaEmulator(finalEmail)
   return finalEmail
 }
 
@@ -46,6 +81,24 @@ export async function logout(page) {
 
 export async function postJob(page, { title, companyName = 'E2E Co', description = 'An E2E test job posting.' }) {
   await page.goto('/employer/jobs/new', { waitUntil: 'domcontentloaded' })
+
+  // registerEmployer() already verified the account server-side via the
+  // emulator, but the browser's own session doesn't know that yet -- its
+  // current ID token was minted before verification happened. The app
+  // shows a gate until the token is refreshed; clicking through it here is
+  // exactly what a real user would do after verifying in another tab.
+  // Whichever actually renders (gate or form) can take a moment after a
+  // fresh navigation, since auth state + the Firestore profile fetch both
+  // resolve first -- wait generously for either rather than racing two
+  // short, independently-timed waits.
+  const refreshButton = page.getByRole('button', { name: /verified.*refresh/i })
+  const jobTitleField = page.getByLabel('Job Title')
+  await refreshButton.or(jobTitleField).waitFor({ state: 'visible', timeout: 15000 })
+  if (await refreshButton.isVisible()) {
+    await refreshButton.click()
+    await jobTitleField.waitFor({ state: 'visible', timeout: 10000 })
+  }
+
   await page.getByLabel('Job Title').fill(title)
   await page.getByLabel('Company Name').fill(companyName)
   await page.getByLabel('Min Salary (₹/month)').fill('15000')

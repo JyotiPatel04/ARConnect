@@ -23,19 +23,19 @@ async function seedUser(uid, data) {
 describe('users.create -- role escalation prevention', () => {
   test('a user can create their own profile as candidate', async () => {
     const uid = nextId('cand')
-    const db = testEnv.authenticatedContext(uid).firestore()
+    const db = testEnv.authenticatedContext(uid, { email: 'a@x.com' }).firestore()
     await assertSucceeds(setDoc(doc(db, 'users', uid), { role: 'candidate', full_name: 'A', email: 'a@x.com' }))
   })
 
   test('a user can create their own profile as employer', async () => {
     const uid = nextId('emp')
-    const db = testEnv.authenticatedContext(uid).firestore()
+    const db = testEnv.authenticatedContext(uid, { email: 'a@x.com' }).firestore()
     await assertSucceeds(setDoc(doc(db, 'users', uid), { role: 'employer', full_name: 'A', email: 'a@x.com' }))
   })
 
   test('a user CANNOT self-declare role: admin -- no client path to admin, ever', async () => {
     const uid = nextId('spoof')
-    const db = testEnv.authenticatedContext(uid).firestore()
+    const db = testEnv.authenticatedContext(uid, { email: 'a@x.com' }).firestore()
     await assertFails(setDoc(doc(db, 'users', uid), { role: 'admin', full_name: 'A', email: 'a@x.com' }))
   })
 
@@ -53,26 +53,47 @@ describe('users.create -- role escalation prevention', () => {
   })
 })
 
+describe('users.create -- email pinned to the Firebase Auth token (Phase 17 P1 fix)', () => {
+  test('email matching the auth token is allowed', async () => {
+    const uid = nextId('cand')
+    const db = testEnv.authenticatedContext(uid, { email: 'real@x.com' }).firestore()
+    await assertSucceeds(setDoc(doc(db, 'users', uid), { role: 'candidate', full_name: 'A', email: 'real@x.com' }))
+  })
+
+  test('a MISMATCHED email (impersonating a different address) is rejected', async () => {
+    const uid = nextId('cand')
+    const db = testEnv.authenticatedContext(uid, { email: 'real@x.com' }).firestore()
+    await assertFails(setDoc(doc(db, 'users', uid), { role: 'candidate', full_name: 'A', email: 'victim@company.com' }))
+  })
+})
+
 describe('users.update -- owner path cannot touch role or moderationStatus', () => {
   test('owner can update their own non-role fields', async () => {
     const uid = nextId('cand')
     await seedUser(uid, { role: 'candidate', full_name: 'Old Name', email: 'a@x.com' })
-    const db = testEnv.authenticatedContext(uid).firestore()
+    const db = testEnv.authenticatedContext(uid, { email: 'a@x.com' }).firestore()
     await assertSucceeds(updateDoc(doc(db, 'users', uid), { full_name: 'New Name', role: 'candidate' }))
   })
 
   test('owner CANNOT change their own role via update', async () => {
     const uid = nextId('cand')
     await seedUser(uid, { role: 'candidate', full_name: 'A', email: 'a@x.com' })
-    const db = testEnv.authenticatedContext(uid).firestore()
+    const db = testEnv.authenticatedContext(uid, { email: 'a@x.com' }).firestore()
     await assertFails(updateDoc(doc(db, 'users', uid), { role: 'employer' }))
   })
 
   test('owner CANNOT change their own moderationStatus via update (self-unsuspend / self-flag)', async () => {
     const uid = nextId('cand')
     await seedUser(uid, { role: 'candidate', full_name: 'A', email: 'a@x.com', moderationStatus: 'active' })
-    const db = testEnv.authenticatedContext(uid).firestore()
+    const db = testEnv.authenticatedContext(uid, { email: 'a@x.com' }).firestore()
     await assertFails(updateDoc(doc(db, 'users', uid), { role: 'candidate', moderationStatus: 'suspended' }))
+  })
+
+  test('owner CANNOT change their own email away from the auth token (Phase 17 P1 fix)', async () => {
+    const uid = nextId('cand')
+    await seedUser(uid, { role: 'candidate', full_name: 'A', email: 'real@x.com' })
+    const db = testEnv.authenticatedContext(uid, { email: 'real@x.com' }).firestore()
+    await assertFails(updateDoc(doc(db, 'users', uid), { email: 'someoneelse@company.com' }))
   })
 
   test('a user cannot update a DIFFERENT user\'s profile', async () => {
