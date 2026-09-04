@@ -7,7 +7,7 @@ import useAuth from '../../hooks/useAuth'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { db, isFirebaseConfigured } from '../../lib/firebase'
 import { doc, getDoc } from 'firebase/firestore'
-import { mapAuthError, roleRedirects } from '../../lib/authErrors'
+import { mapAuthError, roleRedirects, isPathAllowedForRole } from '../../lib/authErrors'
 
 export default function LoginPage() {
   useDocumentTitle('Log In')
@@ -34,7 +34,12 @@ export default function LoginPage() {
       const profileSnap = await getDoc(doc(db, 'users', user.uid))
       const actualRole = profileSnap.exists() ? profileSnap.data().role : undefined
       const from = location.state?.from?.pathname
-      navigate(from || roleRedirects[actualRole] || '/', { replace: true })
+      // Only honor `from` if it actually belongs to this account's own
+      // role -- otherwise a visitor who clicked the wrong portal's link (or
+      // is switching between their own candidate and employer accounts)
+      // would log in successfully and still get bounced to /unauthorized.
+      const destination = isPathAllowedForRole(from, actualRole) ? from : roleRedirects[actualRole] || '/'
+      navigate(destination, { replace: true })
     } catch (err) {
       setError(mapAuthError(err))
     } finally {
