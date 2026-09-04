@@ -19,7 +19,13 @@ export default function EmployerJobDetailPage() {
   const { user } = useAuth()
   const { job, loading, error, refetch } = useJob(jobId)
   const { updateJob, closeJob, reopenJob } = useEmployerJobs()
-  const { forJob, updateStatus, loading: appsLoading } = useEmployerApplications()
+  const {
+    forJob,
+    interviewsByApplicationId,
+    updateStatus,
+    loading: appsLoading,
+    refetch: refetchApplications,
+  } = useEmployerApplications()
 
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -167,6 +173,8 @@ export default function EmployerJobDetailPage() {
               <ApplicationRow
                 key={a.id}
                 application={a}
+                interview={interviewsByApplicationId.get(a.id) ?? null}
+                onInterviewChange={refetchApplications}
                 showJobTitle={false}
                 onStatusChange={handleStatusChange}
                 updating={updatingAppId === a.id}

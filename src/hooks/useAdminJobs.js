@@ -6,6 +6,7 @@ import { setJobModerationStatus } from '../services/moderationService'
 export default function useAdminJobs() {
   const { user, role } = useAuth()
   const [jobs, setJobs] = useState([])
+  const [truncated, setTruncated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -16,14 +17,18 @@ export default function useAdminJobs() {
     async function run() {
       if (!user || role !== 'admin') {
         setJobs([])
+        setTruncated(false)
         setLoading(false)
         return
       }
       setLoading(true)
       setError(null)
       try {
-        const data = await listAllJobs()
-        if (!cancelled) setJobs(data)
+        const { items, truncated: wasTruncated } = await listAllJobs()
+        if (!cancelled) {
+          setJobs(items)
+          setTruncated(wasTruncated)
+        }
       } catch (err) {
         if (!cancelled) setError(err)
       } finally {
@@ -51,5 +56,5 @@ export default function useAdminJobs() {
   const closeJobAsAdmin = useCallback((jobId, reason) => setModerationStatus(jobId, 'closed', reason), [setModerationStatus])
   const reopenJobAsAdmin = useCallback((jobId, reason) => setModerationStatus(jobId, 'active', reason), [setModerationStatus])
 
-  return { jobs, loading, error, refetch, closeJobAsAdmin, reopenJobAsAdmin }
+  return { jobs, truncated, loading, error, refetch, closeJobAsAdmin, reopenJobAsAdmin }
 }

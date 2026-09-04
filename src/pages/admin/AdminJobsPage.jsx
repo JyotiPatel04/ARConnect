@@ -13,7 +13,7 @@ const STATUS_FILTERS = ['all', 'active', 'closed']
 
 export default function AdminJobsPage() {
   useDocumentTitle('Jobs')
-  const { jobs, loading, error, closeJobAsAdmin, reopenJobAsAdmin } = useAdminJobs()
+  const { jobs, truncated, loading, error, closeJobAsAdmin, reopenJobAsAdmin } = useAdminJobs()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [pendingAction, setPendingAction] = useState(null) // { job, nextStatus }
@@ -57,6 +57,13 @@ export default function AdminJobsPage() {
   return (
     <div>
       <PageHeader title="Jobs" subtitle={loading ? 'Loading...' : `${filtered.length} of ${jobs.length} job posts`} />
+
+      {!loading && !error && truncated && (
+        <p className="mb-3 text-[11px] font-semibold text-amber-600">
+          Showing the {jobs.length} most recent jobs. There may be more — older records beyond
+          this aren&apos;t loaded, so search only covers what&apos;s shown here.
+        </p>
+      )}
 
       {!loading && !error && jobs.length > 0 && (
         <div className="mb-4 flex flex-col gap-2.5 sm:flex-row sm:items-center">

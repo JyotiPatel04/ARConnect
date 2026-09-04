@@ -6,6 +6,7 @@ import { setUserModerationStatus } from '../services/moderationService'
 export default function useAdminUsers() {
   const { user, role } = useAuth()
   const [users, setUsers] = useState([])
+  const [truncated, setTruncated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -16,14 +17,18 @@ export default function useAdminUsers() {
     async function run() {
       if (!user || role !== 'admin') {
         setUsers([])
+        setTruncated(false)
         setLoading(false)
         return
       }
       setLoading(true)
       setError(null)
       try {
-        const data = await listAllUsers()
-        if (!cancelled) setUsers(data)
+        const { items, truncated: wasTruncated } = await listAllUsers()
+        if (!cancelled) {
+          setUsers(items)
+          setTruncated(wasTruncated)
+        }
       } catch (err) {
         if (!cancelled) setError(err)
       } finally {
@@ -54,5 +59,5 @@ export default function useAdminUsers() {
   const suspendUser = useCallback((targetUserId, reason) => setModerationStatus(targetUserId, 'suspended', reason), [setModerationStatus])
   const unsuspendUser = useCallback((targetUserId, reason) => setModerationStatus(targetUserId, 'active', reason), [setModerationStatus])
 
-  return { users, loading, error, refetch, suspendUser, unsuspendUser }
+  return { users, truncated, loading, error, refetch, suspendUser, unsuspendUser }
 }

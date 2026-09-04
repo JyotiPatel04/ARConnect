@@ -5,6 +5,7 @@ import { listAllApplications } from '../services/adminService'
 export default function useAdminApplications() {
   const { user, role } = useAuth()
   const [applications, setApplications] = useState([])
+  const [truncated, setTruncated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -15,14 +16,18 @@ export default function useAdminApplications() {
     async function run() {
       if (!user || role !== 'admin') {
         setApplications([])
+        setTruncated(false)
         setLoading(false)
         return
       }
       setLoading(true)
       setError(null)
       try {
-        const data = await listAllApplications()
-        if (!cancelled) setApplications(data)
+        const { items, truncated: wasTruncated } = await listAllApplications()
+        if (!cancelled) {
+          setApplications(items)
+          setTruncated(wasTruncated)
+        }
       } catch (err) {
         if (!cancelled) setError(err)
       } finally {
@@ -38,5 +43,5 @@ export default function useAdminApplications() {
 
   const refetch = useCallback(() => setReloadKey((k) => k + 1), [])
 
-  return { applications, loading, error, refetch }
+  return { applications, truncated, loading, error, refetch }
 }

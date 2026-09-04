@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet } from 'react-router-dom'
 import useAuth from '../hooks/useAuth'
 import useNotifications from '../hooks/useNotifications'
 import NotificationBell from '../components/shared/NotificationBell'
+import SuspendedBanner from '../components/shared/SuspendedBanner'
 import { getInitials } from '../lib/format'
 
 const navItems = [
@@ -87,6 +88,7 @@ export default function CandidateLayout() {
   return (
     <div className="min-h-screen bg-[#f4f5f9]">
       <Header unreadCount={notifications.unreadCount} />
+      <SuspendedBanner />
       <main className="mx-auto max-w-2xl px-4 pb-24 pt-5">
         <Outlet context={notifications} />
       </main>

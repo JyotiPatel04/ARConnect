@@ -9,7 +9,7 @@ import { formatRelativeTime } from '../../lib/format'
 
 export default function AdminApplicationsPage() {
   useDocumentTitle('Applications')
-  const { applications, loading, error } = useAdminApplications()
+  const { applications, truncated, loading, error } = useAdminApplications()
   const [search, setSearch] = useState('')
 
   const filtered = useMemo(() => {
@@ -26,6 +26,13 @@ export default function AdminApplicationsPage() {
         title="Applications"
         subtitle={loading ? 'Loading...' : `${filtered.length} of ${applications.length} applications`}
       />
+
+      {!loading && !error && truncated && (
+        <p className="mb-3 text-[11px] font-semibold text-amber-600">
+          Showing the {applications.length} most recent applications. There may be more — older
+          records beyond this aren&apos;t loaded, so search only covers what&apos;s shown here.
+        </p>
+      )}
 
       {!loading && !error && applications.length > 0 && (
         <div className="relative mb-4">

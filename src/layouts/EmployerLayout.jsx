@@ -15,6 +15,7 @@ import { Link, NavLink, Outlet } from 'react-router-dom'
 import useAuth from '../hooks/useAuth'
 import useNotifications from '../hooks/useNotifications'
 import NotificationBell from '../components/shared/NotificationBell'
+import SuspendedBanner from '../components/shared/SuspendedBanner'
 import { getInitials } from '../lib/format'
 
 const navItems = [
@@ -127,6 +128,7 @@ export default function EmployerLayout() {
             </Link>
           </div>
         </header>
+        <SuspendedBanner />
         <main className="flex-1 p-4 sm:p-6">
           <Outlet context={notifications} />
         </main>

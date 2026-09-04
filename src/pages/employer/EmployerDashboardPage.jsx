@@ -17,7 +17,14 @@ export default function EmployerDashboardPage() {
   useDocumentTitle('Dashboard')
   const { profile } = useAuth()
   const { jobs, loading: jobsLoading, error: jobsError } = useEmployerJobs()
-  const { applications, loading: appsLoading, error: appsError, updateStatus } = useEmployerApplications()
+  const {
+    applications,
+    interviewsByApplicationId,
+    loading: appsLoading,
+    error: appsError,
+    updateStatus,
+    refetch: refetchApplications,
+  } = useEmployerApplications()
   const { profile: companyProfile, loading: companyProfileLoading } = useCompanyProfile()
   const [updatingId, setUpdatingId] = useState(null)
   const companyCompletion = calculateCompanyProfileCompletion(companyProfile)
@@ -114,6 +121,8 @@ export default function EmployerDashboardPage() {
                   <ApplicationRow
                     key={a.id}
                     application={a}
+                    interview={interviewsByApplicationId.get(a.id) ?? null}
+                    onInterviewChange={refetchApplications}
                     onStatusChange={handleStatusChange}
                     updating={updatingId === a.id}
                   />

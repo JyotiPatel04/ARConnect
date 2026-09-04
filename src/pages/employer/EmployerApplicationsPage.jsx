@@ -8,7 +8,7 @@ import useEmployerApplications from '../../hooks/useEmployerApplications'
 
 export default function EmployerApplicationsPage() {
   useDocumentTitle('Applications')
-  const { applications, loading, error, updateStatus } = useEmployerApplications()
+  const { applications, interviewsByApplicationId, loading, error, updateStatus, refetch } = useEmployerApplications()
   const [updatingId, setUpdatingId] = useState(null)
 
   async function handleStatusChange(applicationId, status) {
@@ -40,6 +40,8 @@ export default function EmployerApplicationsPage() {
             <ApplicationRow
               key={a.id}
               application={a}
+              interview={interviewsByApplicationId.get(a.id) ?? null}
+              onInterviewChange={refetch}
               onStatusChange={handleStatusChange}
               updating={updatingId === a.id}
             />

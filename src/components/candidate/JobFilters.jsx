@@ -28,12 +28,13 @@ export default function JobFilters({ search, onSearchChange, filters, onFilterCh
   return (
     <div>
       <div className="flex items-center gap-2">
-        <div className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 shadow-soft">
+        <div className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 shadow-soft focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500">
           <Search size={16} className="text-navy-400" />
           <input
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search jobs, companies, skills..."
+            aria-label="Search jobs"
             className="w-full text-sm text-navy-900 placeholder:text-navy-400 focus:outline-none"
           />
         </div>

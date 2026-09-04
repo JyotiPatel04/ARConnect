@@ -13,23 +13,6 @@ function sortByCreatedAtDesc(list) {
   return [...list].sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0))
 }
 
-// Filtering on applicationId ALONE would be denied outright: Firestore
-// can only permit a list query when it can prove the security rule holds
-// for every document the query's own where-clauses could match, and the
-// interviews read rule checks employerId/candidateId, not applicationId —
-// an unrelated field from the rule's perspective. Adding the employerId
-// equality filter (always known to the caller — this is only ever called
-// from the employer side, e.g. ApplicationRow) makes the query provably
-// safe under the existing rule, with no composite index required
-// (multiple equality-only filters on different fields don't need one).
-export async function getLatestInterviewForApplication(applicationId, employerId) {
-  const snap = await getDocs(
-    query(interviewsRef, where('applicationId', '==', applicationId), where('employerId', '==', employerId))
-  )
-  const interviews = sortByCreatedAtDesc(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-  return interviews[0] || null
-}
-
 export async function listInterviewsByCandidate(candidateId) {
   const snap = await getDocs(query(interviewsRef, where('candidateId', '==', candidateId)))
   return sortByCreatedAtDesc(snap.docs.map((d) => ({ id: d.id, ...d.data() })))

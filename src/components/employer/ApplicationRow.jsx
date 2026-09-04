@@ -4,7 +4,7 @@ import { APPLICATION_STATUSES } from '../../services/employerApplicationService'
 import { STATUS_LABELS as INTERVIEW_STATUS_LABELS } from '../../services/interviewService'
 import { INTERVIEW_TYPE_LABELS } from '../../lib/interviewForm'
 import useJobMatch from '../../hooks/useJobMatch'
-import useApplicationInterview from '../../hooks/useApplicationInterview'
+import useApplicationInterviewActions from '../../hooks/useApplicationInterviewActions'
 import Button from '../ui/Button'
 import ConfirmDialog from '../ui/ConfirmDialog'
 import ScheduleInterviewDialog from './ScheduleInterviewDialog'
@@ -19,18 +19,25 @@ const STATUS_LABELS = {
   hired: 'Hired',
 }
 
-export default function ApplicationRow({ application, onStatusChange, updating, showJobTitle = true }) {
+// `interview` (this application's latest interview, or null) and
+// `onInterviewChange` (refetch the batched list after a mutation) come
+// from the parent page, which fetches every row's interview in ONE query
+// via useEmployerApplications -- see that hook and useApplicationInterviewActions
+// for why (Phase 17 P2: fixes the N+1 read pattern this row used to cause).
+export default function ApplicationRow({
+  application,
+  interview,
+  onInterviewChange,
+  onStatusChange,
+  updating,
+  showJobTitle = true,
+}) {
   const { match, loading: matchLoading } = useJobMatch(application.jobId, application.candidateId)
-  const {
+  const { saving, schedule, edit, cancel, complete } = useApplicationInterviewActions(
+    application,
     interview,
-    loading: interviewLoading,
-    error: interviewFetchError,
-    saving,
-    schedule,
-    edit,
-    cancel,
-    complete,
-  } = useApplicationInterview(application)
+    onInterviewChange
+  )
   const [dialogOpen, setDialogOpen] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [interviewError, setInterviewError] = useState('')
@@ -82,11 +89,8 @@ export default function ApplicationRow({ application, onStatusChange, updating, 
         </p>
 
         {interviewError && <p className="mt-1.5 text-[11px] font-semibold text-red-600">{interviewError}</p>}
-        {interviewFetchError && (
-          <p className="mt-1.5 text-[11px] font-semibold text-red-600">Couldn&apos;t load interview status.</p>
-        )}
 
-        {!interviewLoading && interview && (
+        {interview && (
           <div className="mt-2 rounded-lg bg-slate-50 px-2.5 py-2 text-[11px] text-navy-600">
             <p className="font-semibold text-navy-800">
               Interview {INTERVIEW_STATUS_LABELS[interview.status]} · {INTERVIEW_TYPE_LABELS[interview.interviewType]}
@@ -122,7 +126,7 @@ export default function ApplicationRow({ application, onStatusChange, updating, 
             interview for — scheduling a NEW interview is hidden, same
             pattern as the status dropdown below. An interview scheduled
             before the withdrawal is untouched and still manageable above. */}
-        {!interviewLoading && !isActive && application.status !== 'withdrawn' && (
+        {!isActive && application.status !== 'withdrawn' && (
           <Button size="sm" variant="secondary" icon={CalendarClock} className="mt-2" onClick={() => setDialogOpen(true)}>
             Schedule Interview
           </Button>
