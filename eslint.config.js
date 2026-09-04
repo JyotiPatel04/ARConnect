@@ -22,4 +22,12 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  // Config files and the test suites run under Node, not the browser --
+  // they need `process`/`__dirname`-style globals, not window/document.
+  {
+    files: ['*.config.js', 'tests/**/*.js'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
 ])

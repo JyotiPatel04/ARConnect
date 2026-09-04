@@ -16,6 +16,16 @@ dist-ssr
 .env
 .env.*
 !.env.example
+# .env.test holds no secrets -- it forces every E2E build into emulator
+# mode (VITE_USE_FIREBASE_EMULATOR=true) regardless of local .env/.env.local,
+# so automated tests can never accidentally target production. Committed
+# deliberately, unlike every other .env* file.
+!.env.test
+
+# Test artifacts
+/coverage
+/playwright-report
+/test-results
 
 # Firebase emulator
 firebase-debug.log

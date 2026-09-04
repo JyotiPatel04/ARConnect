@@ -31,7 +31,8 @@ A job portal connecting candidates and employers, with an internal admin console
 - **Firebase Authentication** — email/password auth for all three roles
 - **Cloud Firestore** — application data, gated by Firestore Security Rules
 - **Cloud Functions** (written, currently **not deployed** — see [Known limitations](#known-limitations))
-- **ESLint** — linting; no automated frontend test suite yet (see [Known limitations](#known-limitations))
+- **ESLint** — linting
+- **Vitest**, **@firebase/rules-unit-testing**, **@playwright/test** — unit, Firestore security-rules, and end-to-end testing (see [Testing](#testing))
 
 ## Project structure
 
@@ -144,6 +145,21 @@ Output goes to `dist/`.
 npm run lint
 ```
 
+## Testing
+
+Three layers, all committed to the repo. **None of them ever touch the real `arconnect-7337f` project** — every layer either runs pure functions in memory, or is forced onto a local Firebase emulator, never production.
+
+**Prerequisites** (beyond the app's own): a JVM (Java 11+) — the Firestore/Auth emulator needs it — and Chromium for Playwright, installed once via `npx playwright install chromium`.
+
+| Command | Layer | What it covers |
+|---|---|---|
+| `npm run test:unit` | Vitest, plain Node | Every pure validation/formatting function under `src/lib/` — no emulator needed. |
+| `npm run test:rules` | Vitest + `@firebase/rules-unit-testing`, via `firebase emulators:exec` | `firestore.rules` directly: role escalation, ownership, the full application status-transition matrix, withdrawal lifecycle, interview lifecycle/lockdown, notification recipient verification, suspension enforcement. The emulator is started fresh and torn down automatically for this one command — nothing lingers. |
+| `npm run test:e2e` | `@playwright/test`, via `firebase emulators:exec` | Curated critical journeys through the real UI: the login-redirect regression, candidate apply/withdraw, employer post/review/status, interview lifecycle + withdrawn lockdown, admin login (both rejection and — using an emulator-only seeded admin account — the real success path). Builds a dedicated `--mode test` bundle first (forced into emulator mode via the committed `.env.test`, regardless of your local `.env`/`.env.local`), then runs against a local preview server. |
+| `npm test` | all three, in order | What CI runs. |
+
+Run any of these locally exactly as CI does — no extra setup beyond the prerequisites above and `npm ci`.
+
 ## Firebase Hosting deployment procedure
 
 The build output (`dist/`) is what Hosting serves; `firebase.json` is already configured for it with the SPA rewrite every client-side route needs to survive a direct browser refresh.
@@ -168,10 +184,9 @@ The real AI match-scoring Cloud Function (Claude-backed, with rate limiting and 
 
 ## Known limitations
 
-- **No Firebase Hosting deployment has happened yet** — `firebase.json` is configured for it, but nothing has been deployed. Someone needs to run the command in [Firebase Hosting deployment procedure](#firebase-hosting-deployment-procedure) after review.
-- **No candidate-facing application withdrawal.** Once a candidate applies to a job, there is currently no way for them to cancel or withdraw that application — Firestore rules permit no `delete` and no candidate-side `update` on an application document at all. This is a **product decision still to be made**, not a bug: a future phase needs to decide whether withdrawal should exist and, if so, what should happen to the employer-facing pipeline when it does.
-- **Chat is not implemented.** The candidate UI previously implied recruiter chat was available; this has been corrected to read "Coming Soon" rather than removed outright, pending a decision on whether to build it.
+- **Chat is not implemented.** The candidate UI marks it "Coming Soon" rather than implying it's available, pending a decision on whether to build it.
 - No resume/avatar file upload (Firebase Storage is not wired up); resumes are a link field.
-- No committed automated frontend test suite — `functions/` has one (`npm test`), the frontend does not.
-- No CI/CD pipeline.
 - AI matching is a deterministic stub, not the real Claude-backed scorer, until Blaze is enabled (see above).
+- CI (`.github/workflows/ci.yml`) is committed and ready but has not actually run anywhere yet — this repository has no Git remote configured, and GitHub Actions requires one.
+- No email verification is required at signup for candidates/employers (also noted under [Security notes](#security-notes)).
+- `applications.update`'s employer branch has no FROM-state lock — an employer can move an application between any of the six employer-owned statuses in either direction (including e.g. `hired` back to `applied`). Confirmed intentional, existing product behavior (the employer status dropdown has always allowed this across all three pages that use it), not a gap — documented in `firestore.rules` directly above that rule.
