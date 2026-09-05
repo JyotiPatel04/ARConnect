@@ -42,7 +42,7 @@ export default function CandidateOnboardingPage() {
 
       <div className="w-full max-w-xs space-y-2.5 pt-2">
         <Link to="/candidate/home">
-          <Button className="w-full">Continue with Mobile Number</Button>
+          <Button className="w-full">Get Started</Button>
         </Link>
         <Link to="/employer" className="block text-center text-[12.5px] font-semibold text-navy-500">
           I&apos;m an Employer →

@@ -1,4 +1,5 @@
-import { Mail, Phone, LogOut } from 'lucide-react'
+import { Mail, Phone, LogOut, Building2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import Button from '../../components/ui/Button'
 import PageHeader from '../../components/PageHeader'
 import useAuth from '../../hooks/useAuth'
@@ -32,7 +33,11 @@ export default function EmployerProfilePage() {
           </p>
         )}
         <div className="mt-2 flex gap-2">
-          <Button size="sm" variant="secondary">Edit Profile</Button>
+          <Link to="/employer/company">
+            <Button size="sm" variant="secondary" icon={Building2}>
+              Edit Company Profile
+            </Button>
+          </Link>
           <Button size="sm" variant="ghost" icon={LogOut} onClick={handleSignOut}>
             Log Out
           </Button>

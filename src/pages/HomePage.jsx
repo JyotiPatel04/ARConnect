@@ -1,10 +1,17 @@
 import { Briefcase, Users, ShieldCheck, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import Button from '../components/ui/Button'
+import useAuth from '../hooks/useAuth'
 import useDocumentTitle from '../hooks/useDocumentTitle'
 
 export default function HomePage() {
   useDocumentTitle('Home')
+  const { user, role } = useAuth()
+  // A brand-new visitor clicking this should land somewhere that actually
+  // starts sign-up, not a protected route that just bounces them to a
+  // login wall. An already-authenticated candidate skips registration and
+  // goes straight to their own dashboard instead.
+  const candidateCtaTarget = user && role === 'candidate' ? '/candidate/home' : '/auth/register'
 
   return (
     <div className="min-h-screen bg-[#f4f5f9]">
@@ -42,7 +49,7 @@ export default function HomePage() {
         </p>
 
         <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-          <Link to="/candidate/onboarding">
+          <Link to={candidateCtaTarget}>
             <Button icon={Users}>I&apos;m looking for a job</Button>
           </Link>
           <Link to="/employer">

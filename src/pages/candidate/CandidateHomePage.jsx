@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Search, Sparkles, AlertCircle, User, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import JobCard from '../../components/ui/JobCard'
@@ -18,14 +19,20 @@ export default function CandidateHomePage() {
   const { isSaved, saveJob, unsaveJob } = useSavedJobs()
   const { profile: candidateProfile, loading: candidateProfileLoading } = useCandidateProfile()
   const completion = calculateProfileCompletion(candidateProfile)
+  const [saveError, setSaveError] = useState('')
 
   const recent = jobs.slice(0, 4)
 
   async function handleToggleSave(job) {
-    if (isSaved(job.id)) {
-      await unsaveJob(job.id)
-    } else {
-      await saveJob(job)
+    setSaveError('')
+    try {
+      if (isSaved(job.id)) {
+        await unsaveJob(job.id)
+      } else {
+        await saveJob(job)
+      }
+    } catch (err) {
+      setSaveError(err.message || 'Something went wrong. Please try again.')
     }
   }
 
@@ -89,6 +96,12 @@ export default function CandidateHomePage() {
       </div>
 
       <div className="mt-3 space-y-3">
+        {saveError && (
+          <p className="flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+            <AlertCircle size={13} /> {saveError}
+          </p>
+        )}
+
         {loading && <p className="py-8 text-center text-sm text-navy-400">Loading jobs...</p>}
 
         {!loading && error && (

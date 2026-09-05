@@ -26,6 +26,7 @@ export default function CandidateJobsPage() {
   })
 
   const activeCount = Object.values(filters).filter((v) => v !== '' && v != null).length
+  const [saveError, setSaveError] = useState('')
 
   const results = useMemo(
     () => filterAndSortJobs(jobs, { search, ...filters }),
@@ -37,10 +38,15 @@ export default function CandidateJobsPage() {
   }
 
   async function handleToggleSave(job) {
-    if (isSaved(job.id)) {
-      await unsaveJob(job.id)
-    } else {
-      await saveJob(job)
+    setSaveError('')
+    try {
+      if (isSaved(job.id)) {
+        await unsaveJob(job.id)
+      } else {
+        await saveJob(job)
+      }
+    } catch (err) {
+      setSaveError(err.message || 'Something went wrong. Please try again.')
     }
   }
 
@@ -69,6 +75,12 @@ export default function CandidateJobsPage() {
       />
 
       <div className="mt-4 space-y-3">
+        {saveError && (
+          <p className="flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+            <AlertCircle size={13} /> {saveError}
+          </p>
+        )}
+
         {loading && <p className="py-8 text-center text-sm text-navy-400">Loading jobs...</p>}
 
         {!loading && error && (

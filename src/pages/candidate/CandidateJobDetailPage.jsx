@@ -30,6 +30,7 @@ export default function CandidateJobDetailPage() {
   const [applying, setApplying] = useState(false)
   const [applyError, setApplyError] = useState('')
   const [savingBookmark, setSavingBookmark] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [reportOpen, setReportOpen] = useState(false)
   const [reportSubmitting, setReportSubmitting] = useState(false)
   const [reportError, setReportError] = useState('')
@@ -67,6 +68,7 @@ export default function CandidateJobDetailPage() {
 
   async function handleToggleSave() {
     if (!job) return
+    setSaveError('')
     setSavingBookmark(true)
     try {
       if (isSaved(job.id)) {
@@ -74,6 +76,8 @@ export default function CandidateJobDetailPage() {
       } else {
         await saveJob(job)
       }
+    } catch (err) {
+      setSaveError(err.message || 'Something went wrong. Please try again.')
     } finally {
       setSavingBookmark(false)
     }
@@ -140,6 +144,12 @@ export default function CandidateJobDetailPage() {
           </button>
         </div>
       </div>
+
+      {saveError && (
+        <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+          <AlertCircle size={13} /> {saveError}
+        </p>
+      )}
 
       {reportSubmitted && (
         <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-success-50 px-3 py-2 text-xs font-semibold text-success-700">

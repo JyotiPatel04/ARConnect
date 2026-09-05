@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Bookmark, AlertCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import JobCard from '../../components/ui/JobCard'
@@ -10,10 +11,26 @@ import { formatSalary } from '../../lib/format'
 export default function CandidateSavedJobsPage() {
   useDocumentTitle('Saved Jobs')
   const { savedJobs, loading, error, unsaveJob } = useSavedJobs()
+  const [unsaveError, setUnsaveError] = useState('')
+
+  async function handleUnsave(jobId) {
+    setUnsaveError('')
+    try {
+      await unsaveJob(jobId)
+    } catch (err) {
+      setUnsaveError(err.message || 'Something went wrong. Please try again.')
+    }
+  }
 
   return (
     <div>
       <PageHeader title="Saved Jobs" subtitle={loading ? 'Loading...' : `${savedJobs.length} jobs saved`} />
+
+      {unsaveError && (
+        <p className="mb-3 flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+          <AlertCircle size={13} /> {unsaveError}
+        </p>
+      )}
 
       {loading && <p className="py-8 text-center text-sm text-navy-400">Loading saved jobs...</p>}
 
@@ -46,7 +63,7 @@ export default function CandidateSavedJobsPage() {
                 }}
                 compact
                 isSaved
-                onToggleSave={() => unsaveJob(saved.jobId)}
+                onToggleSave={() => handleUnsave(saved.jobId)}
               />
             </Link>
           ))}
