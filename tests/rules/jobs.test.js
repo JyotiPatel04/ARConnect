@@ -1,6 +1,6 @@
 import { beforeAll, afterAll, describe, test } from 'vitest'
 import { assertSucceeds, assertFails } from '@firebase/rules-unit-testing'
-import { doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore'
+import { doc, setDoc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore'
 import { makeTestEnv } from './setup.js'
 
 let testEnv
@@ -151,6 +151,131 @@ describe('jobs.update -- employer branch: applicationCount/status pinning (Phase
     const { jobA } = await seedJob()
     const db = testEnv.unauthenticatedContext().firestore()
     await assertFails(updateDoc(doc(db, 'jobs', jobA), { title: 'Hijacked' }))
+  })
+})
+
+// Phase 17 P2: jobPostCounters/{employerId} is the lifetime posting
+// backstop jobs.create checks via jobPostCountFor(). Seeded directly here
+// (bypassing rules) to test the cap boundary itself, independent of
+// whether app code correctly increments it.
+async function seedCounter(uid, count) {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'jobPostCounters', uid), { count })
+  })
+}
+
+describe('jobs.create -- lifetime job-posting cap (Phase 17 P2 fix)', () => {
+  test('an employer just under the cap can still create a job', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    await seedCounter(uid, 999)
+    const db = testEnv.authenticatedContext(uid, { email: 'e@x.com', email_verified: true }).firestore()
+    await assertSucceeds(
+      setDoc(doc(db, 'jobs', nextId('job')), {
+        employerId: uid, title: 'Sales Executive', companyName: 'Co', status: 'active', applicationCount: 0,
+      })
+    )
+  })
+
+  test('an employer AT the cap cannot create another job', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    await seedCounter(uid, 1000)
+    const db = testEnv.authenticatedContext(uid, { email: 'e@x.com', email_verified: true }).firestore()
+    await assertFails(
+      setDoc(doc(db, 'jobs', nextId('job')), {
+        employerId: uid, title: 'Sales Executive', companyName: 'Co', status: 'active', applicationCount: 0,
+      })
+    )
+  })
+
+  test('an employer well past the cap cannot create another job', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    await seedCounter(uid, 5000)
+    const db = testEnv.authenticatedContext(uid, { email: 'e@x.com', email_verified: true }).firestore()
+    await assertFails(
+      setDoc(doc(db, 'jobs', nextId('job')), {
+        employerId: uid, title: 'Sales Executive', companyName: 'Co', status: 'active', applicationCount: 0,
+      })
+    )
+  })
+
+  test('an employer with no counter doc yet (never posted) is treated as 0, not blocked', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    const db = testEnv.authenticatedContext(uid, { email: 'e@x.com', email_verified: true }).firestore()
+    await assertSucceeds(
+      setDoc(doc(db, 'jobs', nextId('job')), {
+        employerId: uid, title: 'Sales Executive', companyName: 'Co', status: 'active', applicationCount: 0,
+      })
+    )
+  })
+})
+
+describe('jobPostCounters -- ownership and monotonic increment (Phase 17 P2 fix)', () => {
+  test('an employer can create their own counter starting at 1', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    const db = testEnv.authenticatedContext(uid).firestore()
+    await assertSucceeds(setDoc(doc(db, 'jobPostCounters', uid), { count: 1 }))
+  })
+
+  test('cannot create their own counter starting anywhere but 1', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    const db = testEnv.authenticatedContext(uid).firestore()
+    await assertFails(setDoc(doc(db, 'jobPostCounters', uid), { count: 0 }))
+    await assertFails(setDoc(doc(db, 'jobPostCounters', uid), { count: 5 }))
+  })
+
+  test('cannot create a counter doc for a DIFFERENT employer', async () => {
+    const uid = nextId('emp'), otherUid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    const db = testEnv.authenticatedContext(uid).firestore()
+    await assertFails(setDoc(doc(db, 'jobPostCounters', otherUid), { count: 1 }))
+  })
+
+  test('owner can increment their own counter by exactly 1', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    await seedCounter(uid, 3)
+    const db = testEnv.authenticatedContext(uid).firestore()
+    await assertSucceeds(updateDoc(doc(db, 'jobPostCounters', uid), { count: 4 }))
+  })
+
+  test('owner cannot jump their counter by more than 1', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    await seedCounter(uid, 3)
+    const db = testEnv.authenticatedContext(uid).firestore()
+    await assertFails(updateDoc(doc(db, 'jobPostCounters', uid), { count: 10 }))
+  })
+
+  test('owner cannot decrement or reset their own counter', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    await seedCounter(uid, 5)
+    const db = testEnv.authenticatedContext(uid).firestore()
+    await assertFails(updateDoc(doc(db, 'jobPostCounters', uid), { count: 0 }))
+    await assertFails(updateDoc(doc(db, 'jobPostCounters', uid), { count: 4 }))
+  })
+
+  test('a different employer cannot read or write someone else\'s counter', async () => {
+    const uid = nextId('emp'), otherUid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    await seedCounter(otherUid, 3)
+    const db = testEnv.authenticatedContext(uid).firestore()
+    await assertFails(getDoc(doc(db, 'jobPostCounters', otherUid)))
+    await assertFails(updateDoc(doc(db, 'jobPostCounters', otherUid), { count: 4 }))
+  })
+
+  test('nobody can delete a job-post counter, not even its owner', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    await seedCounter(uid, 3)
+    const db = testEnv.authenticatedContext(uid).firestore()
+    await assertFails(deleteDoc(doc(db, 'jobPostCounters', uid)))
   })
 })
 

@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore'
+import { collection, deleteDoc, doc, getDocs, increment, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 
 const jobsRef = collection(db, 'jobs')
@@ -13,7 +13,18 @@ export async function listJobsByEmployer(employerId) {
 
 export async function createJob({ employerId, ...fields }) {
   const ref = doc(jobsRef)
-  await setDoc(ref, {
+
+  // Batched with the job-post counter (Phase 17 P2, see firestore.rules'
+  // jobPostCountFor()/jobPostCounters) so the counter that gates future
+  // posts stays in sync with actual posts for this app's own UI.
+  // set(..., {merge: true}) with increment() works whether the counter
+  // doc already exists or not: Firestore treats a missing field (or a
+  // missing document) as starting from 0 for increment() purposes, so this
+  // single call covers both "first job ever" (evaluated by the rules as a
+  // create, count becomes 1) and every job after (evaluated as an update,
+  // count becomes prev + 1) without branching here.
+  const batch = writeBatch(db)
+  batch.set(ref, {
     ...fields,
     employerId,
     status: 'active',
@@ -21,6 +32,9 @@ export async function createJob({ employerId, ...fields }) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
+  batch.set(doc(db, 'jobPostCounters', employerId), { count: increment(1) }, { merge: true })
+  await batch.commit()
+
   return ref.id
 }
 

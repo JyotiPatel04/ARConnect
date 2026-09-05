@@ -137,6 +137,16 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/jobs/$(jobId)).data;
     }
 
+    // Reads the caller's own job-posting counter (see jobPostCounters
+    // below) — 0 if they've never posted a job yet. exists() has to be
+    // checked first: get() on a path with no document throws, rather than
+    // returning something a default-aware .get() could fall back on.
+    function jobPostCountFor(employerId) {
+      return exists(/databases/$(database)/documents/jobPostCounters/$(employerId))
+        ? get(/databases/$(database)/documents/jobPostCounters/$(employerId)).data.get('count', 0)
+        : 0;
+    }
+
     // jobs/{jobId} — public listings, owned by the employer who posted them.
     match /jobs/{jobId} {
       allow read: if true;
@@ -148,12 +158,29 @@ service cloud.firestore {
       // employers regardless of this flag). request.auth.token.email_verified
       // reflects Firebase Auth's own server-side verification state, not a
       // client claim, so this can't be spoofed by sending a different value.
+      //
+      // Phase 17 P2: jobPostCountFor() is a coarse, LIFETIME backstop
+      // against bulk/automated job-spam (e.g. a script creating hundreds
+      // of fake listings in one sitting) — not a fine-grained daily rate
+      // limit. A true time-windowed limit would need either Cloud
+      // Functions or a more complex reset-detecting counter, both out of
+      // scope here. 1000 is set high enough that no realistic legitimate
+      // employer on this platform would approach it through ordinary use
+      // (5 jobs/day, every day, for over 6 months straight, still
+      // wouldn't reach it) — this exists to stop a scripted flood, not to
+      // meter genuine usage. jobPostCounters/{employerId} is updated by
+      // the client in the SAME batch as this create (see
+      // employerJobService.createJob) — like jobs.applicationCount
+      // elsewhere in this file, a client bypassing the UI entirely could
+      // choose not to increment it, but could never move it backward
+      // (jobPostCounters.update below only ever allows +1).
       allow create: if isSignedIn()
         && isNotSuspended()
         && callerRole() == 'employer'
         && request.auth.token.email_verified == true
         && request.resource.data.employerId == request.auth.uid
-        && request.resource.data.applicationCount == 0;
+        && request.resource.data.applicationCount == 0
+        && jobPostCountFor(request.auth.uid) < 1000;
 
       allow update: if isSignedIn() && (
         // The owning employer may change anything (title, salary, ...)
@@ -228,6 +255,24 @@ service cloud.firestore {
         && callerRole() == 'employer'
         && resource.data.employerId == request.auth.uid
         && resource.data.applicationCount == 0;
+    }
+
+    // jobPostCounters/{employerId} — Phase 17 P2: one doc per employer,
+    // read by jobPostCountFor() above to enforce the lifetime posting
+    // backstop. Monotonic and tamper-resistant the same way
+    // jobs.applicationCount is: only the owning employer can ever write
+    // it, only upward, only by exactly 1 at a time, never reset, never
+    // touched by anyone else (not even admin).
+    match /jobPostCounters/{employerId} {
+      allow read: if isOwner(employerId);
+
+      allow create: if isOwner(employerId) && callerRole() == 'employer' && request.resource.data.count == 1;
+
+      allow update: if isOwner(employerId)
+        && callerRole() == 'employer'
+        && request.resource.data.count == resource.data.count + 1;
+
+      allow delete: if false;
     }
 
     // applications/{candidateId}_{jobId} — composite id makes the doc id
@@ -545,15 +590,29 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // reports/{reportId} — a candidate/employer flagging a job or user for
-    // admin attention. Once submitted, the reporter has no further access
-    // to it at all (no update, no delete) — only admin can ever read or
-    // change it, and even admin may only move `status` and set
-    // `reviewedBy`/`reviewedAt`; every submission-time field is pinned.
+    // reports/{reporterId}_{targetType}_{targetId} — a candidate/employer
+    // flagging a job or user for admin attention. Once submitted, the
+    // reporter has no further access to it at all (no update, no delete)
+    // — only admin can ever read or change it, and even admin may only
+    // move `status` and set `reviewedBy`/`reviewedAt`; every
+    // submission-time field is pinned.
+    //
+    // Phase 17 P2: the composite doc id (same structural-dedup pattern as
+    // applications/savedJobs above) means a given reporter can have at
+    // most ONE report on file against a given target, ever — Firestore
+    // doc ids are unique, so a second "create" attempt against the same
+    // id is evaluated as an update, and reports.update below only ever
+    // allows admin, never the reporter, so it's rejected outright. This
+    // is the basic spam/duplicate guard; isNotSuspended() is also new
+    // here — every other mutation collection in this file already
+    // required it, this one was accidentally missed, letting a suspended
+    // account keep filing reports.
     match /reports/{reportId} {
       allow read: if isSignedIn() && callerRole() == 'admin';
 
       allow create: if isSignedIn()
+        && isNotSuspended()
+        && reportId == request.auth.uid + '_' + request.resource.data.targetType + '_' + request.resource.data.targetId
         && request.resource.data.reporterId == request.auth.uid
         && request.resource.data.targetType in ['user', 'job']
         && request.resource.data.status == 'open'
