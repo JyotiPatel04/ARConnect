@@ -40,6 +40,14 @@ export async function updateApplicationStatus(application, status) {
   // already succeeded; it's logged rather than surfaced so the employer's
   // successful status change is never blocked by a notification-only
   // failure.
+  // `status` rides along on the notification document (in addition to the
+  // human-readable message) purely so Phase 21's email Cloud Function can
+  // tell "hired"/"rejected" apart from a generic status change without a
+  // second Firestore read or fragile message-string parsing. The existing
+  // create rule has no field allowlist, so this extra field doesn't need
+  // any rules change; the existing update rule (mark-as-read) doesn't
+  // reference it either, so it's preserved unchanged by Firestore's
+  // merge-on-update semantics.
   createNotification({
     recipientId: application.candidateId,
     type: 'application_status_updated',
@@ -47,6 +55,7 @@ export async function updateApplicationStatus(application, status) {
     message: `Your application for ${application.jobTitle} has been moved to ${STATUS_LABELS[status] || status}.`,
     relatedJobId: application.jobId,
     relatedApplicationId: application.id,
+    status,
   }).catch((err) => {
     console.error('[notifications] failed to notify candidate of status change', err)
   })

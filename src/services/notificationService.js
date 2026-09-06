@@ -24,6 +24,7 @@ export async function createNotification({
   relatedJobId = null,
   relatedApplicationId = null,
   relatedInterviewId = null,
+  status = null,
 }) {
   const ref = doc(notificationsRef)
   const data = {
@@ -40,6 +41,11 @@ export async function createNotification({
   // entirely (not even written as null) for every existing Phase 8 type,
   // so those documents are byte-for-byte unchanged from before this phase.
   if (relatedInterviewId != null) data.relatedInterviewId = relatedInterviewId
+  // Only ever set on 'application_status_updated' (Phase 21: lets the
+  // email Cloud Function distinguish hired/rejected/generic) — same
+  // omit-if-absent treatment, so every other notification type is
+  // unaffected.
+  if (status != null) data.status = status
   await setDoc(ref, data)
   return ref.id
 }

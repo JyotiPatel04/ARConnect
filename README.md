@@ -50,7 +50,7 @@ src/
   services/          # Firestore read/write functions (no UI logic)
   lib/               # form validation, formatting, small pure helpers
   context/           # AuthContext (Firebase Auth + user profile state)
-functions/           # Cloud Functions source (AI match scoring) — not deployed
+functions/           # Cloud Functions source (AI match scoring, email notifications) — not deployed
 firestore.rules      # Firestore Security Rules — the real authorization layer
 firebase.json        # Firebase project config (Firestore + Hosting)
 ```
@@ -188,11 +188,27 @@ None of the three steps above happen automatically — they're a deliberate deci
 
 **Nothing else breaks in the meantime.** `getStorage()` only constructs a client SDK handle at app startup — it makes no network call, so the rest of the app is completely unaffected by Storage being unavailable. The resume-link URL field keeps working exactly as before regardless of whether Storage is ever enabled.
 
+## Email notifications status
+
+In addition to the existing in-app notification bell (unchanged), the app can send real transactional emails for the events that matter most: a new application (to the employer), an application status change including hired/not-selected (to the candidate), and interview scheduled/updated/cancelled (to the candidate). This is implemented as a Cloud Function (`sendNotificationEmail` in `functions/index.js`, Firestore-triggered on `notifications/{id}` creation) that sends via [Resend](https://resend.com)'s HTTP API — **fully implemented and unit-tested, but intentionally not deployed**, for the same reason as AI matching: Cloud Functions require the Blaze plan.
+
+**Nothing changes in the meantime.** In-app notifications are created exactly as before, by the same client code, for the same events — this feature only adds an *additional*, independent side effect (an email) to notification types that already exist. Until `sendNotificationEmail` is deployed, no code path anywhere calls it, so today's behavior (in-app only) is completely unaffected.
+
+**Before this goes live in production**, three things need to happen, none of them automatic:
+1. Enable Blaze for `arconnect-7337f` (same standing decision already documented above for Cloud Functions/AI matching and Storage).
+2. Create a Resend account, verify a sending domain, and set the `RESEND_API_KEY` secret — see `functions/SECRET_SETUP.md`.
+3. Deploy: `firebase deploy --only functions:sendNotificationEmail`.
+
+Until all three happen, `sendNotificationEmail` is simply never running (Functions aren't deployed at all yet), so this is a strict superset of the existing "Cloud Functions not deployed" state — no new production risk is introduced by having this code merged.
+
+Run `cd functions && npm test` to run its test suite (`functions/src/email/`), same as the existing AI matching tests.
+
 ## Security notes
 
 - Authorization is enforced by **Firestore Security Rules**, not by the UI. Route guards (`ProtectedRoute`) are a UX convenience — the actual boundary is server-side.
 - There is no public path to an admin account, ever — see [Admin account bootstrap](#admin-account-bootstrap).
 - The Cloud Functions "AI matching" secret (`ANTHROPIC_API_KEY`) is declared as a Secret Manager reference in `functions/index.js` but is inert until Functions are actually deployed with Blaze enabled — see `functions/SECRET_SETUP.md`.
+- Same for the email-notifications secret (`RESEND_API_KEY`) — declared, never fetched or exposed client-side, inert until `sendNotificationEmail` is deployed with it bound. No provider key of any kind ever reaches the React app; email sending only ever happens inside the Cloud Function, using the Admin SDK's already-trusted server-side read of `users/{uid}` for the recipient's address — a client can never trigger an arbitrary email, only the existing, already-rules-validated notification-creation paths can.
 - No email verification is currently required at signup for candidates/employers.
 
 ## Known limitations
@@ -200,6 +216,8 @@ None of the three steps above happen automatically — they're a deliberate deci
 - **Chat is not implemented.** The candidate UI marks it "Coming Soon" rather than implying it's available, pending a decision on whether to build it.
 - Candidate resume file upload is implemented and tested against the local Storage emulator, but **not yet usable in production** — it requires the Blaze plan and Storage to actually be enabled for the project; see [Resume upload / Firebase Storage status](#resume-upload--firebase-storage-status). The resume-link URL field keeps working regardless. No avatar/logo file upload exists yet — those remain link fields.
 - AI matching is a deterministic stub, not the real Claude-backed scorer, until Blaze is enabled (see above).
+- Email notifications are implemented but not live in production until Blaze is enabled, a Resend account/domain is set up, and `sendNotificationEmail` is deployed — see [Email notifications status](#email-notifications-status). No email preference/opt-out system exists yet (there was nothing to build on — `users`/`candidateProfiles`/`companyProfiles` have no notification-preference fields today); every email this feature sends mirrors an in-app notification the recipient would see anyway. A per-user email opt-out is a reasonable future enhancement, not implemented here to avoid inventing a preference-management feature beyond what was asked for.
+- Interview-related emails only ever go to the candidate, never the employer, because that's also true of the existing in-app interview notifications — no employer-facing interview notification exists to mirror. Extending in-app notifications to employers for interview events (if ever wanted) would need to happen before an employer-facing email could exist for them.
 - CI (`.github/workflows/ci.yml`) is committed and ready but has not actually run anywhere yet — this repository has no Git remote configured, and GitHub Actions requires one.
 - No email verification is required at signup for candidates/employers (also noted under [Security notes](#security-notes)).
 - `applications.update`'s employer branch has no FROM-state lock — an employer can move an application between any of the six employer-owned statuses in either direction (including e.g. `hired` back to `applied`). Confirmed intentional, existing product behavior (the employer status dropdown has always allowed this across all three pages that use it), not a gap — documented in `firestore.rules` directly above that rule.
