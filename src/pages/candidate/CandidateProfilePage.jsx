@@ -1,6 +1,7 @@
-import { Phone, Mail, FileText, ExternalLink, LogOut, AlertCircle } from 'lucide-react'
+import { Phone, Mail, LogOut, AlertCircle } from 'lucide-react'
 import Button from '../../components/ui/Button'
 import ProfileForm from '../../components/candidate/ProfileForm'
+import ResumeUploadCard from '../../components/candidate/ResumeUploadCard'
 import ProfileCompletionMeter from '../../components/shared/ProfileCompletionMeter'
 import EmptyState from '../../components/ui/EmptyState'
 import useAuth from '../../hooks/useAuth'
@@ -18,6 +19,7 @@ export default function CandidateProfilePage() {
     error: candidateProfileError,
     saving,
     saveProfile,
+    applyLocalUpdate,
   } = useCandidateProfile()
 
   // ProtectedRoute reacts to sign-out itself and redirects to /auth/login —
@@ -63,26 +65,9 @@ export default function CandidateProfilePage() {
         </div>
       )}
 
-      <div className="mt-5 rounded-2xl border border-slate-100 bg-white p-4 shadow-soft">
-        <div className="flex items-center justify-between">
-          <p className="text-[13px] font-bold text-navy-900">Resume</p>
-          <FileText size={16} className="text-primary-600" />
-        </div>
-        {candidateProfile?.resumeLink ? (
-          <a
-            href={candidateProfile.resumeLink}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="mt-1 flex items-center gap-1 text-xs font-semibold text-primary-600 hover:underline"
-          >
-            View resume <ExternalLink size={12} />
-          </a>
-        ) : (
-          <p className="mt-1 text-xs text-navy-500">
-            No resume link added yet — add one in the Resume section below.
-          </p>
-        )}
-      </div>
+      {!candidateProfileLoading && !candidateProfileError && (
+        <ResumeUploadCard candidateProfile={candidateProfile} onChange={applyLocalUpdate} />
+      )}
 
       <div className="mt-5 rounded-2xl border border-slate-100 bg-white p-4 shadow-soft">
         {candidateProfileLoading ? (

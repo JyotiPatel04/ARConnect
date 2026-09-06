@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app'
 import { getAuth, connectAuthEmulator } from 'firebase/auth'
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions'
+import { getStorage, connectStorageEmulator } from 'firebase/storage'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -40,12 +41,15 @@ const app = initializeApp(
 export const auth = getAuth(app)
 export const db = getFirestore(app)
 export const functions = getFunctions(app)
-
-// Storage is intentionally not initialized here — nothing in the app uses
-// file uploads yet. Add `import { getStorage } from 'firebase/storage'`
-// and `export const storage = getStorage(app)` back in when a feature
-// (resume/avatar upload) actually needs it, so it doesn't bloat the bundle
-// before it's used.
+// Resume upload (see src/services/resumeService.js) is the first feature
+// that needs Storage. getStorage() only constructs a client SDK instance
+// bound to the configured bucket — it makes no network call, so this is
+// safe to have even before Storage is actually enabled in the Firebase
+// Console. Uploads/downloads themselves will fail with a clear error
+// until that's done (and until the project is on the Blaze plan, which
+// Cloud Storage for Firebase now requires) — see README's Known
+// limitations. The existing resumeLink URL field keeps working regardless.
+export const storage = getStorage(app)
 
 // Explicit opt-in only — VITE_USE_FIREBASE_EMULATOR=true in .env.local.
 // Deliberately NOT tied to import.meta.env.DEV: `npm run dev` should keep
@@ -58,5 +62,6 @@ if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true })
   connectFirestoreEmulator(db, '127.0.0.1', 8080)
   connectFunctionsEmulator(functions, '127.0.0.1', 5001)
-  console.info('[firebase] Connected to local emulators (Auth/Firestore/Functions).')
+  connectStorageEmulator(storage, '127.0.0.1', 9199)
+  console.info('[firebase] Connected to local emulators (Auth/Firestore/Functions/Storage).')
 }

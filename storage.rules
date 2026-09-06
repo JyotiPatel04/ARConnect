@@ -1,0 +1,53 @@
+rules_version = '2';
+
+// ARConnect — Firebase Storage Security Rules
+//
+// The only feature currently using Storage is candidate resume upload.
+// Same least-privilege posture as firestore.rules: a candidate can only
+// ever read/write/delete their OWN resume file, nothing else exists here,
+// and everything else is default-denied.
+//
+// No employer/admin read branch exists here on purpose: no existing
+// application/business flow in this app currently surfaces a candidate's
+// resume to anyone but the candidate themselves (grepped the whole
+// employer-facing UI — nothing reads resumeLink or a resume file today).
+// If a future phase adds a legitimate employer-facing "view applicant
+// resume" feature, that's the point to add a scoped read branch here —
+// not before, per least privilege.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // resumes/{userId}/{fileName} — one candidate's resume file(s).
+    // fileName is timestamp-prefixed by the client (see resumeService.js)
+    // so replacing a resume writes a new object rather than colliding with
+    // the old one; the old one is deleted separately after the new upload
+    // succeeds.
+    match /resumes/{userId}/{fileName} {
+      // Only the owning candidate can ever read their own resume back —
+      // matches candidateProfiles/{uid}'s owner-only read in firestore.rules.
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // Content-type and size are enforced here, server-side — the
+      // client-side check in src/lib/resumeValidation.js is a friendly
+      // first line, not the real boundary, same relationship every other
+      // form in this app has with its own rules-layer backstop.
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType in [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ];
+
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Default-deny everything else — same philosophy as firestore.rules'
+    // catch-all: nothing is readable/writable until explicitly allowed
+    // above.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -39,6 +39,17 @@ export default function useCandidateProfile() {
 
   const refetch = useCallback(() => setReloadKey((k) => k + 1), [])
 
+  // Same reasoning as saveProfile below: merges a patch into local state
+  // directly rather than calling refetch(), which flips `loading` back to
+  // true and would unmount whatever's conditionally rendered on
+  // `!loading` (including this profile's own children, like
+  // ResumeUploadCard) before their own transient success/error state ever
+  // gets a chance to render. Used by resume upload/replace/remove, which
+  // know exactly which fields changed without needing a full re-fetch.
+  const applyLocalUpdate = useCallback((patch) => {
+    setProfile((prev) => ({ ...(prev || { candidateId: user?.uid }), ...patch }))
+  }, [user])
+
   const saveProfile = useCallback(
     async (data) => {
       if (!user) throw new Error('You must be signed in.')
@@ -58,5 +69,5 @@ export default function useCandidateProfile() {
     [user]
   )
 
-  return { profile, loading, error, saving, refetch, saveProfile }
+  return { profile, loading, error, saving, refetch, saveProfile, applyLocalUpdate }
 }

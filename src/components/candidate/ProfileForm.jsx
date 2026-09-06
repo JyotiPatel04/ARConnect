@@ -276,9 +276,10 @@ export default function ProfileForm({ userProfile, candidateProfile, onSave, sav
       </section>
 
       <section className="space-y-3 border-t border-slate-100 pt-4">
-        <h2 className="text-[13px] font-bold text-navy-900">Resume</h2>
+        <h2 className="text-[13px] font-bold text-navy-900">Resume Link</h2>
         <p className="-mt-1 text-[11px] text-navy-400">
-          File upload isn&apos;t available yet — paste a link to your resume (Google Drive, Dropbox, etc.) instead.
+          Prefer to upload a file instead? Use the Resume card above. This link is a separate,
+          optional alternative (Google Drive, Dropbox, etc.) — handy if you&apos;d rather not upload one.
         </p>
         <FormField
           label="Resume Link (optional)"

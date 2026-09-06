@@ -81,7 +81,7 @@ Set these in a local `.env` (never committed — see `.gitignore`). Values come 
 | `VITE_FIREBASE_API_KEY` | Firebase Web API key |
 | `VITE_FIREBASE_AUTH_DOMAIN` | Firebase Auth domain |
 | `VITE_FIREBASE_PROJECT_ID` | Firebase project ID (`arconnect-7337f` in production) |
-| `VITE_FIREBASE_STORAGE_BUCKET` | Firebase Storage bucket (not currently used by any feature) |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Firebase Storage bucket (used for candidate resume uploads — see [Resume upload / Firebase Storage status](#resume-upload--firebase-storage-status)) |
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | Firebase messaging sender ID |
 | `VITE_FIREBASE_APP_ID` | Firebase Web App ID |
 | `VITE_USE_FIREBASE_EMULATOR` | Optional. Set to `true` in a local `.env.local` (never `.env`) to point the app at the local Firebase Emulator Suite instead of the real project. Leave unset for normal development. |
@@ -94,7 +94,7 @@ The project (`arconnect-7337f`) needs, at minimum:
 1. **Authentication** → Email/Password sign-in method enabled.
 2. **Cloud Firestore** → created in Native mode, with `firestore.rules` deployed (see below).
 
-Cloud Functions and Firebase Storage are **not required** for the app to run — neither is currently used by any shipped feature.
+Cloud Functions are **not required** for the app to run — nothing shipped uses them yet. Firebase Storage is used by one feature (candidate resume upload) but is **not required either** — the app runs fully without it, falling back to a plain resume-link URL field. See [Resume upload / Firebase Storage status](#resume-upload--firebase-storage-status) before relying on file upload in production.
 
 ## Authentication setup
 
@@ -154,7 +154,7 @@ Three layers, all committed to the repo. **None of them ever touch the real `arc
 | Command | Layer | What it covers |
 |---|---|---|
 | `npm run test:unit` | Vitest, plain Node | Every pure validation/formatting function under `src/lib/` — no emulator needed. |
-| `npm run test:rules` | Vitest + `@firebase/rules-unit-testing`, via `firebase emulators:exec` | `firestore.rules` directly: role escalation, ownership, the full application status-transition matrix, withdrawal lifecycle, interview lifecycle/lockdown, notification recipient verification, suspension enforcement. The emulator is started fresh and torn down automatically for this one command — nothing lingers. |
+| `npm run test:rules` | Vitest + `@firebase/rules-unit-testing`, via `firebase emulators:exec` | `firestore.rules` directly: role escalation, ownership, the full application status-transition matrix, withdrawal lifecycle, interview lifecycle/lockdown, notification recipient verification, suspension enforcement. Also `storage.rules`: resume upload/read/delete ownership, content-type and size limits. The emulator is started fresh and torn down automatically for this one command — nothing lingers. |
 | `npm run test:e2e` | `@playwright/test`, via `firebase emulators:exec` | Curated critical journeys through the real UI: the login-redirect regression, candidate apply/withdraw, employer post/review/status, interview lifecycle + withdrawn lockdown, admin login (both rejection and — using an emulator-only seeded admin account — the real success path). Builds a dedicated `--mode test` bundle first (forced into emulator mode via the committed `.env.test`, regardless of your local `.env`/`.env.local`), then runs against a local preview server. |
 | `npm test` | all three, in order | What CI runs. |
 
@@ -175,6 +175,19 @@ This deploys **only** the static frontend. It does not touch Firestore rules, Cl
 
 The real AI match-scoring Cloud Function (Claude-backed, with rate limiting and unit tests under `functions/src/matching/`) is **fully implemented but intentionally not deployed**, because doing so requires upgrading the Firebase project to the Blaze (pay-as-you-go) plan. Until that's a deliberate decision, job match scores are computed by a deterministic, non-LLM scoring function on the client/rules side — a stand-in, not a placeholder bug. Run `cd functions && npm test` to run its (currently unused-in-production) test suite.
 
+## Resume upload / Firebase Storage status
+
+Candidates can upload a resume file (PDF/DOC/DOCX, 5MB max) from their Profile page, in addition to the existing resume-link URL field — both are supported at once; the app never forces a choice between them. This is the first feature in the app to use Firebase Storage.
+
+**In production today, uploads will fail** with a clear error until Storage is actually enabled for this project, because:
+1. Cloud Storage for Firebase now requires the project to be on the **Blaze (pay-as-you-go)** plan — the same requirement already documented above for Cloud Functions. This has not been enabled for `arconnect-7337f`, deliberately, per this project's standing "never enable Blaze without an explicit decision" rule.
+2. Once on Blaze, Storage itself still needs to be initialized once for the project (Firebase Console → Build → Storage → Get started), which provisions the default bucket referenced by `VITE_FIREBASE_STORAGE_BUCKET`.
+3. `storage.rules` (committed, tested against the local Storage emulator, never yet deployed) needs `firebase deploy --only storage` run once after that.
+
+None of the three steps above happen automatically — they're a deliberate decision for whoever owns this project's billing, exactly like the Blaze decision already made (and still not taken) for Cloud Functions/AI matching.
+
+**Nothing else breaks in the meantime.** `getStorage()` only constructs a client SDK handle at app startup — it makes no network call, so the rest of the app is completely unaffected by Storage being unavailable. The resume-link URL field keeps working exactly as before regardless of whether Storage is ever enabled.
+
 ## Security notes
 
 - Authorization is enforced by **Firestore Security Rules**, not by the UI. Route guards (`ProtectedRoute`) are a UX convenience — the actual boundary is server-side.
@@ -185,7 +198,7 @@ The real AI match-scoring Cloud Function (Claude-backed, with rate limiting and 
 ## Known limitations
 
 - **Chat is not implemented.** The candidate UI marks it "Coming Soon" rather than implying it's available, pending a decision on whether to build it.
-- No resume/avatar file upload (Firebase Storage is not wired up); resumes are a link field.
+- Candidate resume file upload is implemented and tested against the local Storage emulator, but **not yet usable in production** — it requires the Blaze plan and Storage to actually be enabled for the project; see [Resume upload / Firebase Storage status](#resume-upload--firebase-storage-status). The resume-link URL field keeps working regardless. No avatar/logo file upload exists yet — those remain link fields.
 - AI matching is a deterministic stub, not the real Claude-backed scorer, until Blaze is enabled (see above).
 - CI (`.github/workflows/ci.yml`) is committed and ready but has not actually run anywhere yet — this repository has no Git remote configured, and GitHub Actions requires one.
 - No email verification is required at signup for candidates/employers (also noted under [Security notes](#security-notes)).

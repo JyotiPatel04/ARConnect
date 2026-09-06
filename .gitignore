@@ -30,6 +30,7 @@ dist-ssr
 # Firebase emulator
 firebase-debug.log
 firestore-debug.log
+storage-debug.log
 ui-debug.log
 .firebase/
 emulator-data/

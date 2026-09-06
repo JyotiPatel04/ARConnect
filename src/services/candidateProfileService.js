@@ -17,6 +17,7 @@ export async function getMyProfile(uid) {
 export async function upsertMyProfile(uid, data) {
   const ref = doc(db, 'candidateProfiles', uid)
   const existing = await getDoc(ref)
+  const existingData = existing.exists() ? existing.data() : null
   const now = new Date()
 
   const profile = {
@@ -32,17 +33,35 @@ export async function upsertMyProfile(uid, data) {
     expectedSalaryMax: data.expectedSalaryMax ?? null,
     bio: data.bio || '',
     resumeLink: data.resumeLink || '',
+    // Resume FILE metadata (as opposed to the resumeLink URL field above)
+    // is managed independently by resumeService.js via merge writes — this
+    // form knows nothing about file state, so this write (a full setDoc,
+    // not a merge) must carry the existing values forward unchanged,
+    // otherwise saving something as unrelated as your bio would silently
+    // wipe out an already-uploaded resume.
+    resumeFileName: existingData?.resumeFileName ?? null,
+    resumeFileUrl: existingData?.resumeFileUrl ?? null,
+    resumeFilePath: existingData?.resumeFilePath ?? null,
+    resumeUploadedAt: existingData?.resumeUploadedAt ?? null,
   }
   // Single source of truth: the same function that drives the on-screen
   // completion meter also derives the stored flag, so the two can never
   // disagree about whether this profile is "complete".
   profile.profileComplete = calculateProfileCompletion(profile).isComplete
 
+  // `existingData?.createdAt` rather than `existingData ? existingData.createdAt
+  // : ...` -- a document created by resumeService.js's merge write (a
+  // candidate who uploads a resume before ever saving the rest of their
+  // profile) exists but has no createdAt field at all yet. Firestore's
+  // setDoc rejects an explicit `undefined` field value outright, so
+  // treating "doc exists" as "createdAt exists" crashed this exact case;
+  // falling back to serverTimestamp() whenever createdAt specifically is
+  // missing (doc missing entirely, or present without it) fixes both.
   await setDoc(ref, {
     ...profile,
-    createdAt: existing.exists() ? existing.data().createdAt : serverTimestamp(),
+    createdAt: existingData?.createdAt ?? serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
 
-  return { ...profile, createdAt: existing.exists() ? existing.data().createdAt : now, updatedAt: now }
+  return { ...profile, createdAt: existingData?.createdAt ?? now, updatedAt: now }
 }

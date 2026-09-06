@@ -32,7 +32,9 @@ jobs:
         run: npm run test:unit
 
       # The Firestore/Auth emulators run on a JVM -- required for the rules
-      # test suite below, not for anything else in this job.
+      # test suite below, not for anything else in this job. The Storage
+      # emulator (also used below, for resume-upload rules tests) is a
+      # plain Node process and needs no extra setup here.
       - name: Set up Java (required by the Firestore/Auth emulators)
         uses: actions/setup-java@v4
         with:
@@ -42,7 +44,7 @@ jobs:
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
 
-      - name: Firestore/Auth emulator security-rules tests
+      - name: Firestore/Auth/Storage emulator security-rules tests
         run: npm run test:rules
 
       - name: Install Playwright browser (Chromium only)

@@ -49,4 +49,14 @@ describe('calculateProfileCompletion', () => {
     const onlyMin = calculateProfileCompletion({ expectedSalaryMin: 15000 })
     expect(onlyMin.missing.map((m) => m.key)).toContain('expectedSalary')
   })
+
+  test('an uploaded resume file satisfies the resume item just like a resume link does', () => {
+    const withFileOnly = calculateProfileCompletion({ resumeFileUrl: 'https://storage.example/resume.pdf' })
+    expect(withFileOnly.missing.map((m) => m.key)).not.toContain('resumeLink')
+  })
+
+  test('neither a resume link nor an uploaded file means the resume item is missing', () => {
+    const withNeither = calculateProfileCompletion({})
+    expect(withNeither.missing.map((m) => m.key)).toContain('resumeLink')
+  })
 })

@@ -9,9 +9,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:unit": "vitest run src",
-    "test:rules": "firebase emulators:exec --only auth,firestore \"vitest run tests/rules\"",
+    "test:rules": "firebase emulators:exec --only auth,firestore,storage \"vitest run tests/rules\"",
     "pretest:e2e": "vite build --mode test",
-    "test:e2e": "firebase emulators:exec --only auth,firestore \"playwright test\"",
+    "test:e2e": "firebase emulators:exec --only auth,firestore,storage \"playwright test\"",
     "test": "npm run test:unit && npm run test:rules && node tests/wait-for-port-free.mjs 8080 && npm run test:e2e"
   },
   "dependencies": {

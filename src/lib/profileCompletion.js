@@ -31,7 +31,13 @@ const PROFILE_COMPLETION_ITEMS = [
     label: 'Expected salary range',
     check: (p) => p.expectedSalaryMin != null && p.expectedSalaryMax != null,
   },
-  { key: 'resumeLink', label: 'Resume link', check: (p) => Boolean(p.resumeLink?.trim()) },
+  {
+    key: 'resumeLink',
+    label: 'Resume',
+    // Satisfied by either an uploaded file OR the legacy URL field — see
+    // resumeService.js / candidateProfileService.js for why both exist.
+    check: (p) => Boolean(p.resumeLink?.trim()) || Boolean(p.resumeFileUrl),
+  },
 ]
 
 /**
