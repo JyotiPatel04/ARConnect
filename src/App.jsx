@@ -21,6 +21,7 @@ import CandidateJobDetailPage from './pages/candidate/CandidateJobDetailPage'
 import CandidateApplicationsPage from './pages/candidate/CandidateApplicationsPage'
 import CandidateSavedJobsPage from './pages/candidate/CandidateSavedJobsPage'
 import CandidateChatPage from './pages/candidate/CandidateChatPage'
+import CandidateChatConversationPage from './pages/candidate/CandidateChatConversationPage'
 import CandidateInterviewsPage from './pages/candidate/CandidateInterviewsPage'
 import CandidateProfilePage from './pages/candidate/CandidateProfilePage'
 import CandidateNotificationsPage from './pages/candidate/CandidateNotificationsPage'
@@ -36,6 +37,8 @@ import EmployerCandidatesPage from './pages/employer/EmployerCandidatesPage'
 import EmployerInterviewsPage from './pages/employer/EmployerInterviewsPage'
 import EmployerProfilePage from './pages/employer/EmployerProfilePage'
 import EmployerNotificationsPage from './pages/employer/EmployerNotificationsPage'
+import EmployerChatPage from './pages/employer/EmployerChatPage'
+import EmployerChatConversationPage from './pages/employer/EmployerChatConversationPage'
 
 import AdminLayout from './layouts/AdminLayout'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
@@ -78,6 +81,7 @@ function App() {
           <Route path="applications" element={<CandidateApplicationsPage />} />
           <Route path="saved-jobs" element={<CandidateSavedJobsPage />} />
           <Route path="chat" element={<CandidateChatPage />} />
+          <Route path="chat/:conversationId" element={<CandidateChatConversationPage />} />
           <Route path="interviews" element={<CandidateInterviewsPage />} />
           <Route path="profile" element={<CandidateProfilePage />} />
           <Route path="notifications" element={<CandidateNotificationsPage />} />
@@ -96,6 +100,8 @@ function App() {
           <Route path="interviews" element={<EmployerInterviewsPage />} />
           <Route path="profile" element={<EmployerProfilePage />} />
           <Route path="notifications" element={<EmployerNotificationsPage />} />
+          <Route path="chat" element={<EmployerChatPage />} />
+          <Route path="chat/:conversationId" element={<EmployerChatConversationPage />} />
         </Route>
       </Route>
 

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { CalendarClock, CheckCircle2, Pencil, Sparkles, XCircle } from 'lucide-react'
+import { CalendarClock, CheckCircle2, MessageCircle, Pencil, Sparkles, XCircle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { APPLICATION_STATUSES } from '../../services/employerApplicationService'
 import { STATUS_LABELS as INTERVIEW_STATUS_LABELS } from '../../services/interviewService'
 import { INTERVIEW_TYPE_LABELS } from '../../lib/interviewForm'
@@ -8,6 +9,7 @@ import useApplicationInterviewActions from '../../hooks/useApplicationInterviewA
 import Button from '../ui/Button'
 import ConfirmDialog from '../ui/ConfirmDialog'
 import ScheduleInterviewDialog from './ScheduleInterviewDialog'
+import { getOrCreateConversation } from '../../services/chatService'
 import { formatRelativeTime } from '../../lib/format'
 
 const STATUS_LABELS = {
@@ -38,11 +40,24 @@ export default function ApplicationRow({
     interview,
     onInterviewChange
   )
+  const navigate = useNavigate()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [interviewError, setInterviewError] = useState('')
+  const [messaging, setMessaging] = useState(false)
 
   const isActive = interview?.status === 'scheduled'
+
+  async function handleMessage() {
+    setMessaging(true)
+    try {
+      const conversation = await getOrCreateConversation(application)
+      navigate(`/employer/chat/${conversation.id}`)
+    } catch (err) {
+      setInterviewError(err.message || 'Could not open chat. Please try again.')
+      setMessaging(false)
+    }
+  }
 
   async function handleSubmit(fields) {
     setInterviewError('')
@@ -122,15 +137,20 @@ export default function ApplicationRow({
           </div>
         )}
 
-        {/* Phase 12 fix: a withdrawn application has nothing left to
-            interview for — scheduling a NEW interview is hidden, same
-            pattern as the status dropdown below. An interview scheduled
-            before the withdrawal is untouched and still manageable above. */}
-        {!isActive && application.status !== 'withdrawn' && (
-          <Button size="sm" variant="secondary" icon={CalendarClock} className="mt-2" onClick={() => setDialogOpen(true)}>
-            Schedule Interview
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <Button size="sm" variant="secondary" icon={MessageCircle} disabled={messaging} onClick={handleMessage}>
+            Message
           </Button>
-        )}
+          {/* Phase 12 fix: a withdrawn application has nothing left to
+              interview for — scheduling a NEW interview is hidden, same
+              pattern as the status dropdown below. An interview scheduled
+              before the withdrawal is untouched and still manageable above. */}
+          {!isActive && application.status !== 'withdrawn' && (
+            <Button size="sm" variant="secondary" icon={CalendarClock} onClick={() => setDialogOpen(true)}>
+              Schedule Interview
+            </Button>
+          )}
+        </div>
       </div>
 
       {application.status === 'withdrawn' ? (

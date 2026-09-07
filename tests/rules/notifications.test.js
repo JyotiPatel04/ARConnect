@@ -184,6 +184,53 @@ describe('notifications.create -- branch 4/5: interview types', () => {
   })
 })
 
+describe('notifications.create -- branch 6: chat new_message (Feature 1)', () => {
+  test('candidate can notify the real employer of a new message on their real application', async () => {
+    const f = await seedScenario()
+    const db = testEnv.authenticatedContext(f.candA).firestore()
+    await assertSucceeds(
+      setDoc(doc(db, 'notifications', nextId('notif')), {
+        recipientId: f.empA, type: 'new_message', title: 'x', message: 'y',
+        relatedJobId: f.jobA, relatedApplicationId: f.appA, read: false, createdAt: serverTimestamp(),
+      })
+    )
+  })
+
+  test('employer can notify the real candidate of a new message', async () => {
+    const f = await seedScenario()
+    const db = testEnv.authenticatedContext(f.empA).firestore()
+    await assertSucceeds(
+      setDoc(doc(db, 'notifications', nextId('notif')), {
+        recipientId: f.candA, type: 'new_message', title: 'x', message: 'y',
+        relatedJobId: f.jobA, relatedApplicationId: f.appA, read: false, createdAt: serverTimestamp(),
+      })
+    )
+  })
+
+  test('employer cannot spoof recipientId on a new_message notification', async () => {
+    const f = await seedScenario()
+    const db = testEnv.authenticatedContext(f.empA).firestore()
+    await assertFails(
+      setDoc(doc(db, 'notifications', nextId('notif')), {
+        recipientId: f.candB, type: 'new_message', title: 'x', message: 'y',
+        relatedJobId: f.jobA, relatedApplicationId: f.appA, read: false, createdAt: serverTimestamp(),
+      })
+    )
+  })
+
+  test('cannot cite an application the caller has no relationship to', async () => {
+    const f = await seedScenario()
+    const other = await seedScenario()
+    const db = testEnv.authenticatedContext(f.candA).firestore()
+    await assertFails(
+      setDoc(doc(db, 'notifications', nextId('notif')), {
+        recipientId: other.empA, type: 'new_message', title: 'x', message: 'y',
+        relatedJobId: other.jobA, relatedApplicationId: other.appA, read: false, createdAt: serverTimestamp(),
+      })
+    )
+  })
+})
+
 describe('notifications.read / update -- recipient-only, field pinning', () => {
   async function seedNotification(f) {
     const notifId = nextId('notif')

@@ -7,14 +7,17 @@ import useConversations from '../../hooks/useConversations'
 import { hasUnreadMessage } from '../../lib/chatUnread'
 import useAuth from '../../hooks/useAuth'
 
-export default function CandidateChatPage() {
+export default function EmployerChatPage() {
   useDocumentTitle('Chat')
   const { user } = useAuth()
   const { conversations, loading, error } = useConversations()
 
   return (
     <div>
-      <PageHeader title="Chat" subtitle={loading ? 'Loading...' : `${conversations.length} conversation${conversations.length === 1 ? '' : 's'}`} />
+      <PageHeader
+        title="Chat"
+        subtitle={loading ? 'Loading...' : `${conversations.length} conversation${conversations.length === 1 ? '' : 's'}`}
+      />
 
       {loading && <p className="py-8 text-center text-sm text-navy-400">Loading conversations...</p>}
 
@@ -31,17 +34,17 @@ export default function CandidateChatPage() {
         <EmptyState
           icon={MessageCircle}
           title="No conversations yet"
-          subtitle="Message an employer from one of your applications to start a conversation."
+          subtitle="Message a candidate from your Applications list to start a conversation."
         />
       )}
 
       {!loading && !error && conversations.length > 0 && (
-        <div className="space-y-2">
+        <div className="max-w-xl space-y-2">
           {conversations.map((c) => (
             <ConversationListItem
               key={c.id}
-              to={`/candidate/chat/${c.id}`}
-              title={c.companyName}
+              to={`/employer/chat/${c.id}`}
+              title={c.candidateName}
               subtitle={c.jobTitle}
               preview={c.lastMessage}
               lastMessageAt={c.lastMessageAt?.toDate?.()}

@@ -8,12 +8,14 @@ import {
   Building2,
   UserCircle,
   Menu,
+  MessageCircle,
   X,
   LogOut,
 } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import useAuth from '../hooks/useAuth'
 import useNotifications from '../hooks/useNotifications'
+import useConversations from '../hooks/useConversations'
 import NotificationBell from '../components/shared/NotificationBell'
 import SuspendedBanner from '../components/shared/SuspendedBanner'
 import { getInitials } from '../lib/format'
@@ -24,11 +26,12 @@ const navItems = [
   { to: '/employer/applications', label: 'Applications', icon: ClipboardList },
   { to: '/employer/candidates', label: 'Candidates', icon: Users },
   { to: '/employer/interviews', label: 'Interviews', icon: CalendarCheck },
+  { to: '/employer/chat', label: 'Chat', icon: MessageCircle },
   { to: '/employer/company', label: 'Company', icon: Building2 },
   { to: '/employer/profile', label: 'Profile', icon: UserCircle },
 ]
 
-function SidebarContent({ onNavigate }) {
+function SidebarContent({ onNavigate, chatUnreadCount }) {
   const { profile, signOut } = useAuth()
 
   // ProtectedRoute reacts to sign-out itself and redirects to /auth/login —
@@ -62,6 +65,11 @@ function SidebarContent({ onNavigate }) {
           >
             <Icon size={16} strokeWidth={2.25} />
             {label}
+            {to === '/employer/chat' && chatUnreadCount > 0 && (
+              <span className="ml-auto flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                {chatUnreadCount > 9 ? '9+' : chatUnreadCount}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -85,11 +93,15 @@ export default function EmployerLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const { profile } = useAuth()
   const notifications = useNotifications()
+  // Independent subscription from whatever the Chat pages themselves use —
+  // see the identical note in CandidateLayout for why this isn't threaded
+  // through the notifications Outlet context instead.
+  const { unreadCount: chatUnreadCount } = useConversations()
 
   return (
     <div className="min-h-screen bg-[#f4f5f9] lg:flex">
       <aside className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white p-4 lg:flex">
-        <SidebarContent />
+        <SidebarContent chatUnreadCount={chatUnreadCount} />
       </aside>
 
       {mobileOpen && (
@@ -103,7 +115,7 @@ export default function EmployerLayout() {
             >
               <X size={18} />
             </button>
-            <SidebarContent onNavigate={() => setMobileOpen(false)} />
+            <SidebarContent onNavigate={() => setMobileOpen(false)} chatUnreadCount={chatUnreadCount} />
           </aside>
         </div>
       )}

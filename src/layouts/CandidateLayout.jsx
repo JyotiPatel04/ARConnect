@@ -2,6 +2,7 @@ import { Briefcase, Home, Search, ClipboardList, CalendarDays, MessageCircle, Us
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import useAuth from '../hooks/useAuth'
 import useNotifications from '../hooks/useNotifications'
+import useConversations from '../hooks/useConversations'
 import NotificationBell from '../components/shared/NotificationBell'
 import SuspendedBanner from '../components/shared/SuspendedBanner'
 import { getInitials } from '../lib/format'
@@ -57,7 +58,7 @@ function Header({ unreadCount }) {
   )
 }
 
-function BottomNav() {
+function BottomNav({ chatUnreadCount }) {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white">
       <div className="mx-auto flex max-w-2xl items-center justify-between px-2 py-2">
@@ -65,11 +66,16 @@ function BottomNav() {
           <NavLink
             key={to}
             to={to}
-            className="flex flex-1 flex-col items-center gap-0.5 rounded-lg py-1.5"
+            className="relative flex flex-1 flex-col items-center gap-0.5 rounded-lg py-1.5"
           >
             {({ isActive }) => (
               <>
-                <Icon size={19} strokeWidth={2.25} className={isActive ? 'text-primary-600' : 'text-navy-400'} />
+                <span className="relative">
+                  <Icon size={19} strokeWidth={2.25} className={isActive ? 'text-primary-600' : 'text-navy-400'} />
+                  {to === '/candidate/chat' && chatUnreadCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500" aria-label="Unread messages" />
+                  )}
+                </span>
                 <span className={`text-[10px] font-semibold ${isActive ? 'text-primary-600' : 'text-navy-400'}`}>
                   {label}
                 </span>
@@ -84,6 +90,13 @@ function BottomNav() {
 
 export default function CandidateLayout() {
   const notifications = useNotifications()
+  // Independent subscription from whatever the Chat pages themselves use —
+  // this app has no shared cross-page state mechanism beyond the
+  // notifications Outlet context just below, which this deliberately
+  // doesn't touch (CandidateNotificationsPage/EmployerNotificationsPage
+  // both destructure that context assuming it IS the notifications object,
+  // not a wrapper around it).
+  const { unreadCount: chatUnreadCount } = useConversations()
 
   return (
     <div className="min-h-screen bg-[#f4f5f9]">
@@ -92,7 +105,7 @@ export default function CandidateLayout() {
       <main className="mx-auto max-w-2xl px-4 pb-24 pt-5">
         <Outlet context={notifications} />
       </main>
-      <BottomNav />
+      <BottomNav chatUnreadCount={chatUnreadCount} />
     </div>
   )
 }

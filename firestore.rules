@@ -539,6 +539,28 @@ service cloud.firestore {
           && applicationFor(request.resource.data.relatedApplicationId).jobId == request.resource.data.relatedJobId
           && request.resource.data.recipientId == applicationFor(request.resource.data.relatedApplicationId).employerId
         )
+        ||
+        // 6. Chat: a participant notifies the OTHER real participant of a
+        //    new message. A conversation's id is always its application's
+        //    id (see conversations/{conversationId} below), so this reuses
+        //    the exact same applicationFor()-verified pattern as every
+        //    branch above instead of a new helper.
+        (
+          request.resource.data.type == 'new_message'
+          && (
+            (
+              callerRole() == 'candidate'
+              && applicationFor(request.resource.data.relatedApplicationId).candidateId == request.auth.uid
+              && request.resource.data.recipientId == applicationFor(request.resource.data.relatedApplicationId).employerId
+            )
+            ||
+            (
+              callerRole() == 'employer'
+              && applicationFor(request.resource.data.relatedApplicationId).employerId == request.auth.uid
+              && request.resource.data.recipientId == applicationFor(request.resource.data.relatedApplicationId).candidateId
+            )
+          )
+        )
       );
 
       // Only the recipient may ever touch their own notification, and
@@ -736,9 +758,139 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Everything else (messages, ...) is not implemented yet —
-    // default-deny until each collection gets its own rules in a later
-    // phase.
+    // conversations/{conversationId} — one conversation per application,
+    // deliberately using the SAME id as the application it's tied to
+    // (conversationId == applicationId). That single design choice is what
+    // lets every check below reuse the existing applicationFor() trust
+    // helper instead of a new one: a conversation's candidateId/employerId/
+    // jobId are always read straight off the real, already-verified
+    // application document, never trusted from the client — and it's also
+    // what lets messages/{messageId} below authorize purely against
+    // applications, with no separate lookup needed.
+    //
+    // No admin read branch: same reasoning as interviews/{interviewId}
+    // above — this is scoped, two-party data, and nothing in this phase
+    // asks for an admin chat view. If one is ever built, that's the point
+    // to add a scoped admin clause here, not before.
+    match /conversations/{conversationId} {
+      // `resource != null` guards a get() on a conversation that doesn't
+      // exist yet -- without it, `resource.data.candidateId` throws (there
+      // is no data to read) instead of cleanly evaluating to "not
+      // allowed," which is what getOrCreateConversation()'s create-first
+      // flow needs on the very first message of a new conversation (see
+      // chatService.js) and what a live subscription to an unopened
+      // conversation needs to fail cleanly rather than error out.
+      allow read: if isSignedIn() && resource != null && (
+        resource.data.candidateId == request.auth.uid ||
+        (callerRole() == 'employer' && resource.data.employerId == request.auth.uid)
+      );
+
+      // Lazily created by whichever participant opens the chat first —
+      // either side may create it, but only for their OWN real, existing
+      // application, with every field pinned to that application's actual
+      // data. No client-supplied value is trusted beyond "which real
+      // application is this."
+      allow create: if isSignedIn()
+        && isNotSuspended()
+        && conversationId == request.resource.data.applicationId
+        && request.resource.data.candidateId == applicationFor(conversationId).candidateId
+        && request.resource.data.employerId == applicationFor(conversationId).employerId
+        && request.resource.data.jobId == applicationFor(conversationId).jobId
+        && request.resource.data.jobTitle == applicationFor(conversationId).jobTitle
+        && request.resource.data.companyName == applicationFor(conversationId).companyName
+        && request.resource.data.candidateName == applicationFor(conversationId).candidateName
+        && (
+          (callerRole() == 'candidate' && request.auth.uid == request.resource.data.candidateId)
+          || (callerRole() == 'employer' && request.auth.uid == request.resource.data.employerId)
+        )
+        && request.resource.data.lastMessage == null
+        && request.resource.data.lastMessageAt == null
+        && request.resource.data.lastMessageSenderId == null
+        && request.resource.data.candidateLastReadAt == null
+        && request.resource.data.employerLastReadAt == null;
+
+      // Exactly two independent things a participant can ever do to an
+      // existing conversation — sending a message bumps the preview
+      // (sender must be the caller, and must not touch either read
+      // pointer), or a participant moves their OWN read pointer forward
+      // (and touches nothing else). Every identity/context field is
+      // pinned immutable, same style as applications/{id}.update above,
+      // rather than a generic diff()/hasOnly() allowlist.
+      allow update: if isSignedIn() && isNotSuspended() && (
+        resource.data.candidateId == request.auth.uid ||
+        (callerRole() == 'employer' && resource.data.employerId == request.auth.uid)
+      )
+        && request.resource.data.candidateId == resource.data.candidateId
+        && request.resource.data.employerId == resource.data.employerId
+        && request.resource.data.applicationId == resource.data.applicationId
+        && request.resource.data.jobId == resource.data.jobId
+        && request.resource.data.jobTitle == resource.data.jobTitle
+        && request.resource.data.companyName == resource.data.companyName
+        && request.resource.data.candidateName == resource.data.candidateName
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (
+          (
+            // Sending a message.
+            request.resource.data.lastMessageSenderId == request.auth.uid
+            && request.resource.data.lastMessage is string
+            && request.resource.data.lastMessage.size() > 0
+            && request.resource.data.lastMessage.size() <= 2000
+            && request.resource.data.lastMessageAt is timestamp
+            && request.resource.data.candidateLastReadAt == resource.data.get('candidateLastReadAt', null)
+            && request.resource.data.employerLastReadAt == resource.data.get('employerLastReadAt', null)
+          )
+          ||
+          (
+            // The candidate marking their own read pointer.
+            resource.data.candidateId == request.auth.uid
+            && request.resource.data.employerLastReadAt == resource.data.get('employerLastReadAt', null)
+            && request.resource.data.lastMessage == resource.data.get('lastMessage', null)
+            && request.resource.data.lastMessageAt == resource.data.get('lastMessageAt', null)
+            && request.resource.data.lastMessageSenderId == resource.data.get('lastMessageSenderId', null)
+          )
+          ||
+          (
+            // The employer marking their own read pointer.
+            callerRole() == 'employer' && resource.data.employerId == request.auth.uid
+            && request.resource.data.candidateLastReadAt == resource.data.get('candidateLastReadAt', null)
+            && request.resource.data.lastMessage == resource.data.get('lastMessage', null)
+            && request.resource.data.lastMessageAt == resource.data.get('lastMessageAt', null)
+            && request.resource.data.lastMessageSenderId == resource.data.get('lastMessageSenderId', null)
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    // messages/{messageId} — immutable once created; no update or delete
+    // path exists for anyone, including the sender (nothing in this
+    // feature requires editing/retracting a sent message). conversationId
+    // doubles as the applicationId (see conversations/{conversationId}
+    // above), so membership here reuses the exact same applicationFor()
+    // trust helper as every other collection in this file — never a
+    // second, parallel authorization mechanism.
+    match /messages/{messageId} {
+      allow read: if isSignedIn() && (
+        applicationFor(resource.data.conversationId).candidateId == request.auth.uid ||
+        (callerRole() == 'employer' && applicationFor(resource.data.conversationId).employerId == request.auth.uid)
+      );
+
+      allow create: if isSignedIn()
+        && isNotSuspended()
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 2000
+        && (
+          applicationFor(request.resource.data.conversationId).candidateId == request.auth.uid ||
+          (callerRole() == 'employer' && applicationFor(request.resource.data.conversationId).employerId == request.auth.uid)
+        );
+
+      allow update, delete: if false;
+    }
+
+    // Everything else is not implemented yet — default-deny until each
+    // collection gets its own rules in a later phase.
     match /{document=**} {
       allow read, write: if false;
     }

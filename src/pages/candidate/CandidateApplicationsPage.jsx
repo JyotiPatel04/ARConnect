@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { ClipboardList, AlertCircle, XCircle } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { ClipboardList, AlertCircle, MessageCircle, XCircle } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
 import StatusBadge from '../../components/ui/StatusBadge'
 import EmptyState from '../../components/ui/EmptyState'
 import Button from '../../components/ui/Button'
@@ -8,6 +8,7 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import PageHeader from '../../components/PageHeader'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import useMyApplications from '../../hooks/useMyApplications'
+import { getOrCreateConversation } from '../../services/chatService'
 import { formatRelativeTime } from '../../lib/format'
 
 // Mirrors the rule's own list of statuses a candidate may withdraw from —
@@ -18,9 +19,22 @@ const WITHDRAWABLE_STATUSES = ['applied', 'reviewing', 'shortlisted', 'interview
 export default function CandidateApplicationsPage() {
   useDocumentTitle('My Applications')
   const { applications, loading, error, withdraw } = useMyApplications()
+  const navigate = useNavigate()
   const [confirmId, setConfirmId] = useState(null)
   const [busyId, setBusyId] = useState(null)
+  const [messagingId, setMessagingId] = useState(null)
   const [message, setMessage] = useState(null)
+
+  async function handleMessage(application) {
+    setMessagingId(application.id)
+    try {
+      const conversation = await getOrCreateConversation(application)
+      navigate(`/candidate/chat/${conversation.id}`)
+    } catch (err) {
+      setMessage({ id: application.id, type: 'error', text: err.message || 'Could not open chat. Please try again.' })
+      setMessagingId(null)
+    }
+  }
 
   async function handleWithdrawConfirm() {
     const id = confirmId
@@ -88,6 +102,21 @@ export default function CandidateApplicationsPage() {
                     {message.text}
                   </p>
                 )}
+
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={MessageCircle}
+                    disabled={messagingId === a.id}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      handleMessage(a)
+                    }}
+                  >
+                    Message
+                  </Button>
+                </div>
 
                 {withdrawable && (
                   <Button
