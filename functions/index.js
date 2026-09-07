@@ -52,7 +52,14 @@ async function checkAndIncrementRateLimit(uid) {
  * own match); an employer may pass a specific candidateId to view a
  * ranked applicant's match, but only for a job they actually own.
  */
-export const computeMatch = onCall({ secrets: [anthropicApiKey] }, async (request) => {
+// region: 'asia-south1' — same reasoning as sendNotificationEmail below:
+// matches this project's Firestore database and Storage bucket location,
+// both already in asia-south1. This is a callable (unlike
+// sendNotificationEmail's Firestore trigger), so the client SDK's
+// getFunctions(app, ...) call must be pinned to the same region too — see
+// src/lib/firebase.js — or the frontend would call a region this function
+// was never deployed to.
+export const computeMatch = onCall({ region: 'asia-south1', secrets: [anthropicApiKey] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'You must be signed in.')
   }

@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:unit": "vitest run src",
+    "test:functions": "npm --prefix functions test",
     "test:rules": "firebase emulators:exec --only auth,firestore,storage \"vitest run tests/rules\"",
     "pretest:e2e": "vite build --mode test",
     "test:e2e": "firebase emulators:exec --only auth,firestore,storage \"playwright test\"",

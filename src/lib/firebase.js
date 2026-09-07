@@ -40,7 +40,13 @@ const app = initializeApp(
 
 export const auth = getAuth(app)
 export const db = getFirestore(app)
-export const functions = getFunctions(app)
+// Pinned to asia-south1 to match computeMatch's deployed region (see
+// functions/index.js) — computeMatch is the only callable this app has, so
+// this is a required counterpart to that region pin, not a default. A
+// mismatched region here would make computeMatch uncallable in production
+// (the client would call a region the function was never deployed to),
+// not just slower.
+export const functions = getFunctions(app, 'asia-south1')
 // Resume upload (see src/services/resumeService.js) is the first feature
 // that needs Storage. getStorage() only constructs a client SDK instance
 // bound to the configured bucket — it makes no network call, so this is
