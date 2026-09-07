@@ -86,6 +86,12 @@ describe('interviews.create -- ownership, spoofing, withdrawn-application block'
     await assertFails(setDoc(doc(db, 'interviews', f.ivA), validPayload(f)))
   })
 
+  test('unauthenticated user cannot create an interview', async () => {
+    const f = await seedScenario({ appStatus: 'applied' })
+    const db = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(doc(db, 'interviews', f.ivA), validPayload(f)))
+  })
+
   test('suspended employer cannot create an interview', async () => {
     const f = await seedScenario({ appStatus: 'applied', empSuspended: true })
     const db = testEnv.authenticatedContext(f.empA).firestore()
