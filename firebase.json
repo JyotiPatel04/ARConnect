@@ -18,6 +18,11 @@
       "source": "functions",
       "codebase": "default",
       "runtime": "nodejs20"
+    },
+    {
+      "source": "functions-match",
+      "codebase": "match",
+      "runtime": "nodejs20"
     }
   ],
   "emulators": {
