@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { CheckCircle2, AlertCircle } from 'lucide-react'
 import Button from '../ui/Button'
 import FilterChip from '../ui/FilterChip'
@@ -10,6 +11,7 @@ function toggleInArray(arr, value) {
 }
 
 export default function JobAlertPreferencesForm({ preferences, onSave, saving }) {
+  const navigate = useNavigate()
   const [form, setForm] = useState(() => ({
     enabled: preferences?.enabled ?? true,
     jobTypes: preferences?.jobTypes || [],
@@ -40,6 +42,7 @@ export default function JobAlertPreferencesForm({ preferences, onSave, saving })
         experienceLevel: form.experienceLevel || null,
       })
       setSuccess(true)
+      navigate('/candidate/profile', { replace: true })
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.')
     }

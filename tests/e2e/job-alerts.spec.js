@@ -31,7 +31,10 @@ test('candidate receives an in-app alert only for a job matching their preferenc
   await expect(page.getByRole('switch', { name: 'Enable job alerts' })).toHaveAttribute('aria-checked', 'true')
   await page.getByLabel('Skills (comma separated)').fill(uniqueSkill)
   await page.getByRole('button', { name: 'Save Preferences' }).click()
-  await expect(page.getByText('Preferences saved.')).toBeVisible({ timeout: 10000 })
+  // A successful save now redirects to /candidate/profile (see
+  // JobAlertPreferencesForm) -- the redirect only fires after onSave()
+  // resolves, so landing here confirms the save actually completed.
+  await page.waitForURL(/\/candidate\/profile$/, { timeout: 10000 })
 
   await logout(page)
 

@@ -75,7 +75,14 @@ export async function login(page, email, password = PASSWORD) {
 }
 
 export async function logout(page) {
-  await page.getByRole('button', { name: /log ?out/i }).click()
+  // Scoped to <header>/<aside> -- the persistent layout chrome that renders
+  // its own Log Out control on every authenticated page (CandidateLayout's
+  // header icon button, EmployerLayout/AdminLayout's sidebar button).
+  // CandidateProfilePage and EmployerProfilePage each also render their own
+  // page-level "Log Out" button inside <main>, which an unscoped
+  // getByRole('button', { name: /log ?out/i }) matches too -- excluding
+  // <main> keeps this helper working from any page, including those.
+  await page.locator('header, aside').getByRole('button', { name: /log ?out/i }).click()
   await page.waitForURL(/\/auth\/login|\/$/, { timeout: 10000 })
 }
 
