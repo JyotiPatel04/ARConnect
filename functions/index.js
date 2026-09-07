@@ -164,8 +164,14 @@ const resendFromEmail = defineString('RESEND_FROM_EMAIL', { default: 'ARConnect 
 // isn't in `secrets` because defineString params aren't secrets; binding
 // it isn't required for it to be read via process.env at runtime once
 // deployed with a value set.
+//
+// region: 'asia-south1' pins this alongside the project's Firestore
+// database and Storage bucket, both already in asia-south1 — without it,
+// a 2nd-gen Firestore trigger defaults to us-central1, which would put
+// this function's every Firestore read on the far side of the world from
+// the data it's reading.
 export const sendNotificationEmail = onDocumentCreated(
-  { document: 'notifications/{notificationId}', secrets: [resendApiKey] },
+  { document: 'notifications/{notificationId}', region: 'asia-south1', secrets: [resendApiKey] },
   async (event) => {
     const notification = event.data?.data()
     if (!notification) return
