@@ -561,6 +561,28 @@ service cloud.firestore {
             )
           )
         )
+        ||
+        // 7. Job Alerts: a candidate notifies THEMSELVES that a newly
+        //    published job matches their own alert preferences — always
+        //    self-directed, so (unlike every branch above) there's no
+        //    other-party identity to verify against a real document. The
+        //    real trust boundary here is jobAlertMatches/{id} below (which
+        //    independently re-verifies the job is real and active, and
+        //    structurally prevents a second notification for the same
+        //    job via its create-only composite id) — this branch only
+        //    needs to confirm the candidate is notifying no one but
+        //    themselves. isNotSuspended() is deliberately included here
+        //    even though no earlier branch checks it — a suspended
+        //    candidate shouldn't be able to self-generate new
+        //    notifications while suspended; this is a stricter standard
+        //    applied only to this new branch, not a change to any
+        //    existing one.
+        (
+          callerRole() == 'candidate'
+          && isNotSuspended()
+          && request.resource.data.type == 'job_alert_match'
+          && request.resource.data.recipientId == request.auth.uid
+        )
       );
 
       // Only the recipient may ever touch their own notification, and
@@ -885,6 +907,55 @@ service cloud.firestore {
           applicationFor(request.resource.data.conversationId).candidateId == request.auth.uid ||
           (callerRole() == 'employer' && applicationFor(request.resource.data.conversationId).employerId == request.auth.uid)
         );
+
+      allow update, delete: if false;
+    }
+
+    // jobAlertPreferences/{userId} — one document per candidate (same
+    // one-per-owner id pattern as candidateProfiles/{uid}), holding the
+    // on/off toggle and match criteria for in-app job alerts. Kept
+    // entirely separate from candidateProfiles rather than extending it:
+    // upsertMyProfile does a full non-merge setDoc rebuild from a fixed
+    // field list, so every additional field there is one more thing a
+    // routine profile save could silently wipe if the form doesn't know
+    // about it (see resumeFile*'s carried-forward fields above for
+    // exactly that class of bug, already hit twice in this app's
+    // history). A separate, independently-owned document has no such
+    // risk. No admin branch — same reasoning as interviews/conversations:
+    // private, scoped, single-owner data with no admin UI requested.
+    match /jobAlertPreferences/{userId} {
+      allow read: if isOwner(userId);
+
+      allow create, update: if isOwner(userId)
+        && isNotSuspended()
+        && callerRole() == 'candidate'
+        && request.resource.data.candidateId == userId;
+
+      allow delete: if false;
+    }
+
+    // jobAlertMatches/{candidateId}_{jobId} — a durable, create-only
+    // dedup marker: one per (candidate, job) pair, ever. This is the
+    // actual duplicate-prevention guarantee (not just the lastAlertCheckAt
+    // cursor, which is only an efficiency bound on what gets scanned) —
+    // Firestore's create-vs-update semantics make a second marker for the
+    // same pair structurally impossible, the exact same mechanism
+    // applications/{candidateId}_{jobId} already relies on to prevent a
+    // double-apply. jobFor() (already used by jobs.create/applications.create
+    // above) independently re-verifies the job is real and still active,
+    // so a candidate can never mark themselves matched against a
+    // fabricated or closed job. No read is needed by any client code
+    // path today, but owner-only read is granted anyway for
+    // debuggability/consistency with every other owned collection here.
+    match /jobAlertMatches/{matchId} {
+      allow read: if isSignedIn() && resource.data.candidateId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isNotSuspended()
+        && callerRole() == 'candidate'
+        && matchId == request.resource.data.candidateId + '_' + request.resource.data.jobId
+        && request.resource.data.candidateId == request.auth.uid
+        && jobFor(request.resource.data.jobId).status == 'active';
 
       allow update, delete: if false;
     }

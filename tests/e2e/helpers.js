@@ -79,7 +79,15 @@ export async function logout(page) {
   await page.waitForURL(/\/auth\/login|\/$/, { timeout: 10000 })
 }
 
-export async function postJob(page, { title, companyName = 'E2E Co', description = 'An E2E test job posting.' }) {
+// location/jobType/workMode/experienceLevel/skills are all optional and
+// left unset by default (the form's own defaults apply, unchanged from
+// before these params existed) -- added for job-alerts.spec.js, which
+// needs to control these fields to construct a deliberately non-matching
+// job; every pre-existing caller is unaffected since it never passes them.
+export async function postJob(
+  page,
+  { title, companyName = 'E2E Co', description = 'An E2E test job posting.', location, jobType, workMode, experienceLevel, skills }
+) {
   await page.goto('/employer/jobs/new', { waitUntil: 'domcontentloaded' })
 
   // registerEmployer() already verified the account server-side via the
@@ -101,9 +109,13 @@ export async function postJob(page, { title, companyName = 'E2E Co', description
 
   await page.getByLabel('Job Title').fill(title)
   await page.getByLabel('Company Name').fill(companyName)
+  if (location) await page.getByLabel('Location').selectOption(location)
+  if (jobType) await page.getByLabel('Job Type').selectOption(jobType)
+  if (workMode) await page.getByLabel('Work Mode').selectOption(workMode)
+  if (experienceLevel) await page.getByLabel('Experience Level').selectOption(experienceLevel)
   await page.getByLabel('Min Salary (₹/month)').fill('15000')
   await page.getByLabel('Max Salary (₹/month)').fill('25000')
-  await page.getByLabel('Skills (comma separated)').fill('Testing')
+  await page.getByLabel('Skills (comma separated)').fill(skills || 'Testing')
   await page.getByLabel('Description').fill(description)
   await page.getByRole('button', { name: 'Publish Job' }).click()
 

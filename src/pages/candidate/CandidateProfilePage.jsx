@@ -1,4 +1,5 @@
-import { Phone, Mail, LogOut, AlertCircle } from 'lucide-react'
+import { Phone, Mail, LogOut, AlertCircle, Bell, ChevronRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import Button from '../../components/ui/Button'
 import ProfileForm from '../../components/candidate/ProfileForm'
 import ResumeUploadCard from '../../components/candidate/ResumeUploadCard'
@@ -68,6 +69,20 @@ export default function CandidateProfilePage() {
       {!candidateProfileLoading && !candidateProfileError && (
         <ResumeUploadCard candidateProfile={candidateProfile} onChange={applyLocalUpdate} />
       )}
+
+      <Link
+        to="/candidate/job-alerts"
+        className="mt-3 flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3.5 shadow-soft"
+      >
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
+          <Bell size={16} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <p className="text-[13px] font-bold text-navy-900">Job Alerts</p>
+          <p className="text-xs text-navy-500">Get notified about jobs matching your preferences</p>
+        </span>
+        <ChevronRight size={16} className="shrink-0 text-navy-300" />
+      </Link>
 
       <div className="mt-5 rounded-2xl border border-slate-100 bg-white p-4 shadow-soft">
         {candidateProfileLoading ? (

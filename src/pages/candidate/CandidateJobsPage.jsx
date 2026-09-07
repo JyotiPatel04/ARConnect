@@ -8,6 +8,7 @@ import PageHeader from '../../components/PageHeader'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import useJobs from '../../hooks/useJobs'
 import useSavedJobs from '../../hooks/useSavedJobs'
+import useJobAlertMatcher from '../../hooks/useJobAlertMatcher'
 import { filterAndSortJobs } from '../../lib/jobFilters'
 import { toJobCardProps } from '../../lib/format'
 
@@ -17,6 +18,13 @@ export default function CandidateJobsPage() {
   useDocumentTitle('Search Jobs')
   const { jobs, loading, error } = useJobs()
   const { isSaved, saveJob, unsaveJob } = useSavedJobs()
+  // Fire-and-forget: checks this candidate's job alerts once per visit to
+  // this page. Deliberately the ONLY place this hook is mounted anywhere
+  // in the app (see useJobAlertMatcher's own guard against re-running,
+  // which protects against a re-render here, not against a second
+  // mount elsewhere) — mounting it in more than one page would risk two
+  // independent checks racing each other.
+  useJobAlertMatcher()
   const [searchParams] = useSearchParams()
 
   const [search, setSearch] = useState('')

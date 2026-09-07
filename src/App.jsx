@@ -24,6 +24,7 @@ import CandidateChatPage from './pages/candidate/CandidateChatPage'
 import CandidateChatConversationPage from './pages/candidate/CandidateChatConversationPage'
 import CandidateInterviewsPage from './pages/candidate/CandidateInterviewsPage'
 import CandidateProfilePage from './pages/candidate/CandidateProfilePage'
+import JobAlertsPage from './pages/candidate/JobAlertsPage'
 import CandidateNotificationsPage from './pages/candidate/CandidateNotificationsPage'
 
 import EmployerLayout from './layouts/EmployerLayout'
@@ -84,6 +85,7 @@ function App() {
           <Route path="chat/:conversationId" element={<CandidateChatConversationPage />} />
           <Route path="interviews" element={<CandidateInterviewsPage />} />
           <Route path="profile" element={<CandidateProfilePage />} />
+          <Route path="job-alerts" element={<JobAlertsPage />} />
           <Route path="notifications" element={<CandidateNotificationsPage />} />
         </Route>
       </Route>
