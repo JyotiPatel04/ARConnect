@@ -11,15 +11,34 @@ test.describe('auth redirect', () => {
   test('candidate login goes to the candidate dashboard', async ({ page }) => {
     const email = await registerCandidate(page)
     await logout(page)
+
+    // Tracks every URL the page actually navigates to during login, not
+    // just the final one -- a race between Firebase Auth (ready fast) and
+    // the Firestore profile/role fetch (slower) could otherwise send the
+    // app through /unauthorized for real before self-correcting, which a
+    // check of only the FINAL url would never catch.
+    const visitedPaths = []
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) visitedPaths.push(new URL(frame.url()).pathname)
+    })
+
     await login(page, email)
     await expect(page).toHaveURL(/\/candidate\/home$/)
+    expect(visitedPaths).not.toContain('/unauthorized')
   })
 
   test('employer login goes to the employer dashboard', async ({ page }) => {
     const email = await registerEmployer(page)
     await logout(page)
+
+    const visitedPaths = []
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) visitedPaths.push(new URL(frame.url()).pathname)
+    })
+
     await login(page, email)
     await expect(page).toHaveURL(/\/employer$/)
+    expect(visitedPaths).not.toContain('/unauthorized')
   })
 
   test('employer bounced from a candidate-only route still lands on the employer dashboard, not /unauthorized', async ({ page }) => {
@@ -27,11 +46,18 @@ test.describe('auth redirect', () => {
     await logout(page)
     await page.goto('/candidate/onboarding', { waitUntil: 'domcontentloaded' })
     await page.waitForURL(/\/auth\/login/, { timeout: 10000 })
+
+    const visitedPaths = []
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) visitedPaths.push(new URL(frame.url()).pathname)
+    })
+
     await page.getByLabel('Email').fill(email)
     await page.getByLabel('Password').fill('E2eTest123!')
     await page.getByRole('button', { name: 'Log In' }).click()
     await expect(page).toHaveURL(/\/employer/, { timeout: 15000 })
     await expect(page).not.toHaveURL(/\/unauthorized/)
+    expect(visitedPaths).not.toContain('/unauthorized')
   })
 
   test('a legitimate same-role deep link is still honored after login', async ({ page }) => {

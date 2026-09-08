@@ -67,10 +67,20 @@ test.describe('admin security', () => {
 
   test('a real admin account logs in successfully and reaches the admin dashboard', async ({ page }) => {
     await page.goto('/admin/login', { waitUntil: 'domcontentloaded' })
+
+    // See auth-redirect.spec.js -- tracks every URL visited during login so
+    // a transient (but real, self-uncorrecting) bounce through /unauthorized
+    // can't slip past an assertion that only checks the final URL.
+    const visitedPaths = []
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) visitedPaths.push(new URL(frame.url()).pathname)
+    })
+
     await page.getByLabel('Email').fill(adminEmail)
     await page.getByLabel('Password').fill(adminPassword)
     await page.getByRole('button', { name: 'Admin Login' }).click()
     await expect(page).toHaveURL(/\/admin$/, { timeout: 15000 })
     await expect(page.getByText('Admin Console')).toBeVisible({ timeout: 8000 })
+    expect(visitedPaths).not.toContain('/unauthorized')
   })
 })

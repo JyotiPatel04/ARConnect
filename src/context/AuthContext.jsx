@@ -38,6 +38,17 @@ export function AuthProvider({ children }) {
     }
 
     const unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
+      // Re-arm loading for THIS transition, not just the very first one --
+      // `loading` already settled to false once (e.g. app boot with no
+      // user), so without this a fresh sign-in leaves a window where
+      // `user` is already set but `role` (profile fetch below) hasn't
+      // resolved yet, with `loading` stuck at its stale `false`.
+      // ProtectedRoute reads that window as "authenticated but wrong role"
+      // and navigates to /unauthorized for real -- not a transient render,
+      // so nothing self-corrects once that happens. Re-arming here makes
+      // ProtectedRoute show its existing loading state through every
+      // transition instead.
+      setLoading(true)
       setUser(nextUser)
       if (nextUser) {
         // Firestore's own request-signing ID token is cached separately
