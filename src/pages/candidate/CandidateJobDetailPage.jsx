@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ArrowLeft, Bookmark, Flag, MapPin, Laptop, CheckCircle2, XCircle, AlertCircle } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import VerifiedBadge from '../../components/ui/VerifiedBadge'
 import StatusBadge from '../../components/ui/StatusBadge'
 import Button from '../../components/ui/Button'
@@ -20,6 +20,14 @@ import { formatSalary, formatRelativeTime } from '../../lib/format'
 
 export default function CandidateJobDetailPage() {
   const { jobId } = useParams()
+  // CandidateJobsPage links here with its own current search string attached
+  // (see its job-card Link), so this page's own `location.search` already
+  // IS the originating Jobs URL's query string -- no separate state to
+  // track or filters to reconstruct, and it's naturally empty when this
+  // page was reached without one (a direct/shared link), which collapses
+  // to a plain "/candidate/jobs" back target for free.
+  const location = useLocation()
+  const backTo = { pathname: '/candidate/jobs', search: location.search }
   const { user } = useAuth()
   const { job, loading, error } = useJob(jobId)
   const { match, loading: matchLoading, error: matchError } = useJobMatch(jobId)
@@ -101,7 +109,7 @@ export default function CandidateJobDetailPage() {
   if (!job) {
     return (
       <div>
-        <Link to="/candidate/jobs" className="text-navy-900">
+        <Link to={backTo} aria-label="Back to jobs" className="text-navy-900">
           <ArrowLeft size={19} />
         </Link>
         <div className="mt-6">
@@ -119,7 +127,7 @@ export default function CandidateJobDetailPage() {
   return (
     <div>
       <div className="flex items-center justify-between">
-        <Link to="/candidate/jobs" className="text-navy-900">
+        <Link to={backTo} aria-label="Back to jobs" className="text-navy-900">
           <ArrowLeft size={19} />
         </Link>
         <span className="text-sm font-bold text-navy-900">Job Details</span>

@@ -3,10 +3,16 @@ import { Search, SlidersHorizontal, X } from 'lucide-react'
 import FilterChip from '../ui/FilterChip'
 import { JOB_LOCATIONS, JOB_TYPES, WORK_MODES, EXPERIENCE_LEVELS } from '../../lib/jobOptions'
 
-const SALARY_OPTIONS = [
+const SALARY_PRESETS = [
   { label: '₹15k+', value: 15000 },
   { label: '₹25k+', value: 25000 },
   { label: '₹40k+', value: 40000 },
+]
+
+const SORT_OPTIONS = [
+  { label: 'Recent', value: 'recent' },
+  { label: 'Relevance', value: 'relevance' },
+  { label: 'Salary', value: 'salary' },
 ]
 
 function FilterGroup({ label, children }) {
@@ -18,11 +24,29 @@ function FilterGroup({ label, children }) {
   )
 }
 
-export default function JobFilters({ search, onSearchChange, filters, onFilterChange, onClearFilters, activeCount }) {
+function toggleSkill(selected, skill) {
+  return selected.includes(skill) ? selected.filter((s) => s !== skill) : [...selected, skill]
+}
+
+export default function JobFilters({
+  search,
+  onSearchChange,
+  filters,
+  onFilterChange,
+  sortBy,
+  onSortChange,
+  availableSkills,
+  onClearFilters,
+  activeCount,
+}) {
   const [panelOpen, setPanelOpen] = useState(false)
 
   function toggle(key, value) {
     onFilterChange(key, filters[key] === value ? '' : value)
+  }
+
+  function handleSalaryInput(key, rawValue) {
+    onFilterChange(key, rawValue === '' ? null : Number(rawValue))
   }
 
   return (
@@ -57,6 +81,11 @@ export default function JobFilters({ search, onSearchChange, filters, onFilterCh
 
       {panelOpen && (
         <div className="mt-3 space-y-3 rounded-2xl border border-slate-100 bg-white p-3.5 shadow-soft">
+          <FilterGroup label="Sort By">
+            {SORT_OPTIONS.map((opt) => (
+              <FilterChip key={opt.value} label={opt.label} active={sortBy === opt.value} onClick={() => onSortChange(opt.value)} />
+            ))}
+          </FilterGroup>
           <FilterGroup label="Location">
             {JOB_LOCATIONS.map((loc) => (
               <FilterChip key={loc} label={loc} active={filters.location === loc} onClick={() => toggle('location', loc)} />
@@ -82,16 +111,61 @@ export default function JobFilters({ search, onSearchChange, filters, onFilterCh
               />
             ))}
           </FilterGroup>
-          <FilterGroup label="Minimum Salary">
-            {SALARY_OPTIONS.map((s) => (
-              <FilterChip
-                key={s.value}
-                label={s.label}
-                active={filters.minSalary === s.value}
-                onClick={() => toggle('minSalary', s.value)}
+
+          {/* Skills come from the jobs already loaded on this page (see
+              CandidateJobsPage), not a hard-coded list -- so this group is
+              simply absent when nothing's loaded yet or no job carries any
+              skills, rather than showing an empty/broken-looking box. */}
+          {availableSkills.length > 0 && (
+            <FilterGroup label="Skills">
+              {availableSkills.map((skill) => (
+                <FilterChip
+                  key={skill}
+                  label={skill}
+                  active={filters.skills.includes(skill)}
+                  onClick={() => onFilterChange('skills', toggleSkill(filters.skills, skill))}
+                />
+              ))}
+            </FilterGroup>
+          )}
+
+          <div>
+            <p className="mb-1.5 text-[11px] font-bold text-navy-700">Salary Range</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                inputMode="numeric"
+                min="0"
+                placeholder="Min ₹"
+                value={filters.salaryMin ?? ''}
+                onChange={(e) => handleSalaryInput('salaryMin', e.target.value)}
+                aria-label="Minimum salary"
+                className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-[13px] text-navy-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               />
-            ))}
-          </FilterGroup>
+              <span className="shrink-0 text-navy-400">–</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min="0"
+                placeholder="Max ₹"
+                value={filters.salaryMax ?? ''}
+                onChange={(e) => handleSalaryInput('salaryMax', e.target.value)}
+                aria-label="Maximum salary"
+                className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-[13px] text-navy-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {SALARY_PRESETS.map((s) => (
+                <FilterChip
+                  key={s.value}
+                  label={s.label}
+                  active={filters.salaryMin === s.value}
+                  onClick={() => toggle('salaryMin', s.value)}
+                />
+              ))}
+            </div>
+          </div>
+
           {activeCount > 0 && (
             <button
               type="button"
