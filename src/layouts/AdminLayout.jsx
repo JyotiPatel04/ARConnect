@@ -83,8 +83,8 @@ export default function AdminLayout() {
   const { profile } = useAuth()
 
   return (
-    <div className="min-h-screen bg-[#f4f5f9] lg:flex">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white p-4 lg:flex">
+    <div className="h-screen overflow-hidden bg-[#f4f5f9] lg:flex">
+      <aside className="hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 lg:flex">
         <SidebarContent />
       </aside>
 
@@ -104,8 +104,8 @@ export default function AdminLayout() {
         </div>
       )}
 
-      <div className="flex min-h-screen flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur sm:px-6">
+      <div className="flex h-screen flex-1 flex-col overflow-hidden">
+        <header className="sticky top-0 z-30 flex shrink-0 items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur sm:px-6">
           <button
             className="text-navy-500 lg:hidden"
             onClick={() => setMobileOpen(true)}
@@ -120,7 +120,7 @@ export default function AdminLayout() {
             </div>
           </div>
         </header>
-        <main className="flex-1 p-4 sm:p-6">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           <Outlet />
         </main>
       </div>
