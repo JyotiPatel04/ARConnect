@@ -6,7 +6,7 @@ import useDocumentTitle from '../../hooks/useDocumentTitle'
 const points = [
   { icon: ShieldCheck, label: 'Verified employers only' },
   { icon: Sparkles, label: 'AI-matched job recommendations' },
-  { icon: MessageCircle, label: 'Chat with recruiters — Coming Soon' },
+  { icon: MessageCircle, label: 'Chat with recruiters' },
 ]
 
 export default function CandidateOnboardingPage() {
