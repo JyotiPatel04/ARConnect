@@ -17,6 +17,7 @@ export default function EmployerJobNewPage() {
   const [success, setSuccess] = useState(false)
   const [resendStatus, setResendStatus] = useState('')
   const [checking, setChecking] = useState(false)
+  const [checkStatus, setCheckStatus] = useState('')
 
   async function handleSubmit(fields) {
     setSubmitting(true)
@@ -39,10 +40,28 @@ export default function EmployerJobNewPage() {
     }
   }
 
+  // Reload really does hit Firebase Auth's servers each time (see
+  // AuthContext.refreshEmailVerified) -- if this still comes back
+  // unverified, that's a genuine, current answer, not stale local state.
+  // The most common real-world cause is an email link that was
+  // pre-fetched/consumed by an inbox's security scanner before the user
+  // themselves clicked it (a well-known Gmail/Outlook gotcha, not specific
+  // to this app) -- Resend issues a fresh, not-yet-consumed link. Without
+  // this feedback, "still unverified" and "the check itself failed" were
+  // indistinguishable from a silent no-op.
   async function handleRefresh() {
     setChecking(true)
+    setCheckStatus('')
     try {
-      await refreshEmailVerified()
+      const verified = await refreshEmailVerified()
+      if (!verified) {
+        setCheckStatus(
+          "Still not verified. If you already clicked the link, try resending — some inboxes' " +
+            'security scanners can use up a link before you click it yourself.'
+        )
+      }
+    } catch {
+      setCheckStatus("Couldn't check your verification status right now. Please try again.")
     } finally {
       setChecking(false)
     }
@@ -63,6 +82,7 @@ export default function EmployerJobNewPage() {
           your inbox when you registered.
         </AuthAlert>
         {resendStatus && <p className="mt-2 text-xs text-navy-500">{resendStatus}</p>}
+        {checkStatus && <p className="mt-2 text-xs text-navy-500">{checkStatus}</p>}
         <div className="mt-3 flex gap-2">
           <Button type="button" variant="secondary" onClick={handleResend}>
             Resend verification email

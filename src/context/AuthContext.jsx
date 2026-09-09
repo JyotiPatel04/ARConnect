@@ -154,10 +154,12 @@ export function AuthProvider({ children }) {
   // verification state rather than a stale token minted before the user
   // clicked the link in their inbox.
   const refreshEmailVerified = useCallback(async () => {
-    if (!auth.currentUser) return
+    if (!auth.currentUser) return false
     await auth.currentUser.reload()
     await auth.currentUser.getIdToken(true)
-    setEmailVerified(auth.currentUser.emailVerified)
+    const verified = auth.currentUser.emailVerified
+    setEmailVerified(verified)
+    return verified
   }, [])
 
   const value = {
