@@ -1,6 +1,6 @@
-import { beforeAll, afterAll, describe, test } from 'vitest'
+import { beforeAll, afterAll, describe, test, expect } from 'vitest'
 import { assertSucceeds, assertFails } from '@firebase/rules-unit-testing'
-import { doc, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, where, serverTimestamp } from 'firebase/firestore'
 import { makeTestEnv } from './setup.js'
 
 let testEnv
@@ -239,5 +239,36 @@ describe('applications.delete -- unconditionally denied', () => {
     const f = await seedScenario({ appStatus: 'applied' })
     await assertFails(deleteDoc(doc(testEnv.authenticatedContext(f.candA).firestore(), 'applications', f.appA)))
     await assertFails(deleteDoc(doc(testEnv.authenticatedContext(f.empA).firestore(), 'applications', f.appA)))
+  })
+})
+
+// adminService.getPlatformStats() counts applications per status via
+// getCountFromServer(query(applicationsRef, where('status', '==', X))) --
+// the admin branch of applications.read doesn't depend on resource.data at
+// all (unlike the candidate/employer branches), so this must hold for a
+// status-filtered query exactly the same way it already does for a direct
+// doc read.
+describe('applications -- admin can query/count by status (platform statistics)', () => {
+  async function seedAdmin() {
+    const adminA = nextId('admin')
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users', adminA), { role: 'admin', full_name: 'Admin', email: 'admin@x.com' })
+    })
+    return adminA
+  }
+
+  test('admin can run a status-filtered query across all applications', async () => {
+    const f = await seedScenario({ appStatus: 'hired' })
+    const adminA = await seedAdmin()
+    const db = testEnv.authenticatedContext(adminA).firestore()
+    const snap = await assertSucceeds(getDocs(query(collection(db, 'applications'), where('status', '==', 'hired'))))
+    expect(snap.docs.some((d) => d.id === f.appA)).toBe(true)
+  })
+
+  test('a non-admin cannot run the same platform-wide status query', async () => {
+    await seedScenario({ appStatus: 'hired' })
+    const other = await seedScenario({ appStatus: 'applied' })
+    const db = testEnv.authenticatedContext(other.empB).firestore()
+    await assertFails(getDocs(query(collection(db, 'applications'), where('status', '==', 'hired'))))
   })
 })

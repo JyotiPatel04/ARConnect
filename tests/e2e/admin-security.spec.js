@@ -82,5 +82,19 @@ test.describe('admin security', () => {
     await expect(page).toHaveURL(/\/admin$/, { timeout: 15000 })
     await expect(page.getByText('Admin Console')).toBeVisible({ timeout: 8000 })
     expect(visitedPaths).not.toContain('/unauthorized')
+
+    // The platform-statistics cards (including the newly added Closed
+    // Jobs / Hired-Selected / Interviews cards and the Applications by
+    // Status breakdown) render without error. Values aren't asserted here
+    // -- they're platform-wide counts across every other spec's data in
+    // this shared emulator run, so only presence/no-crash is meaningfully
+    // testable at this level; the underlying counting logic itself is
+    // covered by tests/rules/applications.test.js and
+    // tests/rules/interviews.test.js.
+    await expect(page.getByText('Total Users', { exact: true })).toBeVisible({ timeout: 8000 })
+    await expect(page.getByText('Closed Jobs', { exact: true })).toBeVisible()
+    await expect(page.getByText('Interviews', { exact: true })).toBeVisible()
+    await expect(page.getByText('Hired / Selected', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Applications by Status' })).toBeVisible()
   })
 })

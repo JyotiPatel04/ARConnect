@@ -823,13 +823,19 @@ service cloud.firestore {
     }
 
     // interviews/{interviewId} — scheduled by the employer who owns the
-    // underlying application; the candidate is always read-only. No admin
-    // clause: Phase 5-9 never needed one for this kind of scoped,
-    // two-party data, and nothing in Phase 10 asks for one either.
+    // underlying application; the candidate is always read-only.
+    //
+    // Admin read: added only so adminService.getPlatformStats() can run a
+    // platform-wide getCountFromServer(interviewsRef) for the dashboard's
+    // Interviews stat — same callerRole()-based trust already extended to
+    // admin on users/applications/companyProfiles above, read-only, no
+    // write access granted. The candidate/employer branches below are
+    // completely unchanged.
     match /interviews/{interviewId} {
       allow read: if isSignedIn() && (
         resource.data.candidateId == request.auth.uid ||
-        (callerRole() == 'employer' && resource.data.employerId == request.auth.uid)
+        (callerRole() == 'employer' && resource.data.employerId == request.auth.uid) ||
+        callerRole() == 'admin'
       );
 
       // candidateId/jobId are never taken from the client — they're read

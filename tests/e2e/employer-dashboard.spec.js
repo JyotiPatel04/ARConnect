@@ -70,6 +70,13 @@ test('employer dashboard: fresh employer sees empty states, then real data as jo
   // Active Jobs mini-list now renders with the posted job.
   await expect(page.getByRole('heading', { name: 'Active Jobs', exact: true })).toBeVisible()
   await expect(page.getByText(jobTitle).first()).toBeVisible()
+  // Total Jobs reuses the same already-loaded jobs array (jobs.length) --
+  // one active job means Total Jobs reads 1 too.
+  const totalJobsCard = page
+    .getByText('Total Jobs', { exact: true })
+    .first()
+    .locator('xpath=ancestor::div[contains(@class, "rounded-2xl")][1]')
+  await expect(totalJobsCard).toContainText('1', { timeout: 10000 })
 
   // A candidate applies -- Total Applications should reflect it.
   const candContext = await browser.newContext()
@@ -125,4 +132,20 @@ test('employer dashboard: fresh employer sees empty states, then real data as jo
   await expect(upcomingCard).toContainText('1', { timeout: 10000 })
   await expect(page.getByText(candName).first()).toBeVisible()
   await expect(page.getByText(jobTitle).first()).toBeVisible()
+
+  // Move the application to 'hired' -- the dashboard's Hired stat card
+  // (pipelineCounts.hired, already computed for the Candidate Pipeline
+  // section) should pick it up.
+  await page.goto('/employer/applications', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByText(candName, { exact: true })).toBeVisible({ timeout: 10000 })
+  const hireSelect = page.getByLabel(`Status for ${candName}`)
+  await hireSelect.selectOption('hired')
+  await expect(hireSelect).toHaveValue('hired')
+
+  await page.goto('/employer', { waitUntil: 'domcontentloaded' })
+  const hiredCard = page
+    .getByText('Hired', { exact: true })
+    .first()
+    .locator('xpath=ancestor::div[contains(@class, "rounded-2xl")][1]')
+  await expect(hiredCard).toContainText('1', { timeout: 10000 })
 })

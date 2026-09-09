@@ -217,6 +217,75 @@ describe('interviews.read -- cross-role access', () => {
   })
 })
 
+// adminService.getPlatformStats() runs getCountFromServer(interviewsRef) --
+// an UNFILTERED, platform-wide query, unlike the owner-scoped queries
+// above. The admin branch doesn't depend on resource.data at all, so this
+// must hold across every document in the collection, not just one caller
+// can prove ownership of.
+describe('interviews.read -- admin platform-wide access (adminService.getPlatformStats)', () => {
+  async function seedAdmin() {
+    const adminA = nextId('admin')
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users', adminA), { role: 'admin', full_name: 'Admin', email: 'admin@x.com' })
+    })
+    return adminA
+  }
+
+  test('admin can run an unfiltered, collection-wide query (the aggregate-count shape)', async () => {
+    await seedScenario({ appStatus: 'applied', interviewStatus: 'scheduled' })
+    const adminA = await seedAdmin()
+    const db = testEnv.authenticatedContext(adminA).firestore()
+    await assertSucceeds(getDocs(collection(db, 'interviews')))
+  })
+
+  test('a non-admin (employer, not the owner of this interview) cannot run the same unfiltered query', async () => {
+    const f = await seedScenario({ appStatus: 'applied', interviewStatus: 'scheduled' })
+    const db = testEnv.authenticatedContext(f.empB).firestore()
+    await assertFails(getDocs(collection(db, 'interviews')))
+  })
+
+  test('a non-admin candidate cannot run the same unfiltered query either', async () => {
+    const f = await seedScenario({ appStatus: 'applied', interviewStatus: 'scheduled' })
+    const db = testEnv.authenticatedContext(f.candB).firestore()
+    await assertFails(getDocs(collection(db, 'interviews')))
+  })
+
+  test('candidate access to their OWN interview is unchanged after the admin read grant', async () => {
+    const f = await seedScenario({ appStatus: 'applied', interviewStatus: 'scheduled' })
+    const db = testEnv.authenticatedContext(f.candA).firestore()
+    await assertSucceeds(getDocs(query(collection(db, 'interviews'), where('candidateId', '==', f.candA))))
+  })
+
+  test('employer access to their OWN interview is unchanged after the admin read grant', async () => {
+    const f = await seedScenario({ appStatus: 'applied', interviewStatus: 'scheduled' })
+    const db = testEnv.authenticatedContext(f.empA).firestore()
+    await assertSucceeds(
+      getDocs(query(collection(db, 'interviews'), where('applicationId', '==', f.appA), where('employerId', '==', f.empA)))
+    )
+  })
+
+  test('admin gets READ access only -- cannot create an interview', async () => {
+    const f = await seedScenario({ appStatus: 'applied' })
+    const adminA = await seedAdmin()
+    const db = testEnv.authenticatedContext(adminA).firestore()
+    await assertFails(setDoc(doc(db, 'interviews', f.ivA), validPayload(f)))
+  })
+
+  test('admin gets READ access only -- cannot update an existing interview', async () => {
+    const f = await seedScenario({ appStatus: 'applied', interviewStatus: 'scheduled' })
+    const adminA = await seedAdmin()
+    const db = testEnv.authenticatedContext(adminA).firestore()
+    await assertFails(updateDoc(doc(db, 'interviews', f.ivA), { status: 'completed' }))
+  })
+
+  test('admin gets READ access only -- cannot delete an interview (still unconditionally denied)', async () => {
+    const f = await seedScenario({ appStatus: 'applied', interviewStatus: 'scheduled' })
+    const adminA = await seedAdmin()
+    const db = testEnv.authenticatedContext(adminA).firestore()
+    await assertFails(deleteDoc(doc(db, 'interviews', f.ivA)))
+  })
+})
+
 describe('interviews.delete -- unconditionally denied', () => {
   test('never hard-deleted, not even by the owning employer', async () => {
     const f = await seedScenario({ appStatus: 'applied', interviewStatus: 'scheduled' })

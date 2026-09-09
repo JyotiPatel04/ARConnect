@@ -9,6 +9,8 @@ import {
   ArrowRight,
   Building2,
   Star,
+  Award,
+  Layers,
   CalendarDays,
   Bell,
   MessageCircle,
@@ -199,9 +201,13 @@ export default function EmployerDashboardPage() {
       {!loading && !error && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {/* Total Jobs / Hired reuse data this page already loads
+                (jobs.length, pipelineCounts.hired below) -- no new queries. */}
+            <DashboardCard label="Total Jobs" value={jobs.length} icon={Layers} />
             <DashboardCard label="Active Jobs" value={stats.activeJobs} icon={Briefcase} />
             <DashboardCard label="Total Applications" value={stats.totalApplications} icon={ClipboardList} />
             <DashboardCard label="Shortlisted" value={stats.shortlisted} icon={Star} />
+            <DashboardCard label="Hired" value={pipelineCounts.hired} icon={Award} />
             <DashboardCard label="Upcoming Interviews" value={upcomingInterviewsAll.length} icon={CalendarDays} />
           </div>
 

@@ -8,11 +8,13 @@
 import { collection, getCountFromServer, getDocs, limit, query, where } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { ADMIN_LIST_LIMIT, isListTruncated } from '../lib/adminList'
+import { APPLICATION_STATUSES } from './employerApplicationService'
 
 const usersRef = collection(db, 'users')
 const jobsRef = collection(db, 'jobs')
 const applicationsRef = collection(db, 'applications')
 const companyProfilesRef = collection(db, 'companyProfiles')
+const interviewsRef = collection(db, 'interviews')
 
 // Aggregation queries (count-only, no documents downloaded) — cheap, and
 // governed by the exact same security rules as any other read of these
@@ -31,17 +33,43 @@ const companyProfilesRef = collection(db, 'companyProfiles')
 // companyProfileService.upsertMyCompanyProfile now always writes an
 // explicit verificationStatus on every save, so any pre-existing employer
 // who edits their profile at all becomes counted from that point on.
+// Application status counts reuse APPLICATION_STATUSES (the same 6 values
+// the employer's own status dropdown offers) rather than inventing a
+// separate list -- 'withdrawn' (candidate-initiated, not employer-settable)
+// is deliberately not included here, same scope as that constant's own
+// existing usage elsewhere in the app.
+//
+// totalInterviews relies on firestore.rules' interviews/{id} read rule
+// carrying an explicit `callerRole() == 'admin'` branch (added alongside
+// this) -- without it this getCountFromServer(interviewsRef) call would be
+// denied outright, the same way it would be for any other collection
+// admin isn't granted read access to.
 export async function getPlatformStats() {
-  const [totalUsers, totalCandidates, totalEmployers, totalJobs, activeJobs, totalApplications, pendingVerifications] =
-    await Promise.all([
-      getCountFromServer(usersRef),
-      getCountFromServer(query(usersRef, where('role', '==', 'candidate'))),
-      getCountFromServer(query(usersRef, where('role', '==', 'employer'))),
-      getCountFromServer(jobsRef),
-      getCountFromServer(query(jobsRef, where('status', '==', 'active'))),
-      getCountFromServer(applicationsRef),
-      getCountFromServer(query(companyProfilesRef, where('verificationStatus', '==', 'pending'))),
-    ])
+  const [
+    totalUsers,
+    totalCandidates,
+    totalEmployers,
+    totalJobs,
+    activeJobs,
+    totalApplications,
+    pendingVerifications,
+    totalInterviews,
+    ...applicationStatusCounts
+  ] = await Promise.all([
+    getCountFromServer(usersRef),
+    getCountFromServer(query(usersRef, where('role', '==', 'candidate'))),
+    getCountFromServer(query(usersRef, where('role', '==', 'employer'))),
+    getCountFromServer(jobsRef),
+    getCountFromServer(query(jobsRef, where('status', '==', 'active'))),
+    getCountFromServer(applicationsRef),
+    getCountFromServer(query(companyProfilesRef, where('verificationStatus', '==', 'pending'))),
+    getCountFromServer(interviewsRef),
+    ...APPLICATION_STATUSES.map((status) => getCountFromServer(query(applicationsRef, where('status', '==', status)))),
+  ])
+
+  const applicationsByStatus = Object.fromEntries(
+    APPLICATION_STATUSES.map((status, i) => [status, applicationStatusCounts[i].data().count])
+  )
 
   return {
     totalUsers: totalUsers.data().count,
@@ -49,8 +77,12 @@ export async function getPlatformStats() {
     totalEmployers: totalEmployers.data().count,
     totalJobs: totalJobs.data().count,
     activeJobs: activeJobs.data().count,
+    closedJobs: totalJobs.data().count - activeJobs.data().count,
     totalApplications: totalApplications.data().count,
     pendingVerifications: pendingVerifications.data().count,
+    totalInterviews: totalInterviews.data().count,
+    totalHired: applicationsByStatus.hired,
+    applicationsByStatus,
   }
 }
 
