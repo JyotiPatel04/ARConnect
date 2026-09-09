@@ -8,7 +8,6 @@ import {
   ClipboardList,
   ShieldCheck,
   BarChart3,
-  Bell,
   Menu,
   X,
   LogOut,
@@ -116,7 +115,6 @@ export default function AdminLayout() {
           </button>
           <span className="hidden text-sm font-bold text-navy-900 lg:block">Platform Overview</span>
           <div className="flex items-center gap-3">
-            <Bell size={17} className="text-navy-400" />
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-navy-900 text-[10px] font-bold text-white">
               {getInitials(profile?.full_name) || 'SA'}
             </div>

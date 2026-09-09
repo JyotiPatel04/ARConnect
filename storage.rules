@@ -4,16 +4,19 @@ rules_version = '2';
 //
 // The only feature currently using Storage is candidate resume upload.
 // Same least-privilege posture as firestore.rules: a candidate can only
-// ever read/write/delete their OWN resume file, nothing else exists here,
-// and everything else is default-denied.
+// ever read/write/delete their OWN resume file via this Storage read rule,
+// nothing else exists here, and everything else is default-denied.
 //
-// No employer/admin read branch exists here on purpose: no existing
-// application/business flow in this app currently surfaces a candidate's
-// resume to anyone but the candidate themselves (grepped the whole
-// employer-facing UI — nothing reads resumeLink or a resume file today).
-// If a future phase adds a legitimate employer-facing "view applicant
-// resume" feature, that's the point to add a scoped read branch here —
-// not before, per least privilege.
+// Employer resume visibility is intentionally NOT implemented as a Storage
+// rule change: an employer never reads this path directly. Instead, the
+// candidate's resumeFileUrl/resumeFileName are copied onto their
+// applications/{applicationId} document at apply time and pinned immutable
+// there (see firestore.rules' applications.create/update, which
+// cross-verifies both fields against the candidate's own candidateProfiles
+// doc via candidateProfileFor() — never a bare client claim). The employer
+// who already legitimately reads that application (per applications.read,
+// scoped to their own jobs) reads the resume link along with it. Storage
+// itself stays owner-only exactly as before.
 service firebase.storage {
   match /b/{bucket}/o {
 

@@ -12,7 +12,7 @@ import { formatSalary } from '../../lib/format'
 export default function EmployerJobsPage() {
   useDocumentTitle('My Jobs')
   const { jobs, loading, error, closeJob, reopenJob, deleteJob } = useEmployerJobs()
-  const [pendingAction, setPendingAction] = useState(null) // { job, type: 'close' | 'delete' }
+  const [pendingAction, setPendingAction] = useState(null) // { job, type: 'close' | 'reopen' | 'delete' }
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
 
@@ -23,6 +23,8 @@ export default function EmployerJobsPage() {
     try {
       if (pendingAction.type === 'close') {
         await closeJob(pendingAction.job.id)
+      } else if (pendingAction.type === 'reopen') {
+        await reopenJob(pendingAction.job.id)
       } else if (pendingAction.type === 'delete') {
         await deleteJob(pendingAction.job.id)
       }
@@ -103,7 +105,12 @@ export default function EmployerJobsPage() {
                     Close
                   </Button>
                 ) : (
-                  <Button size="sm" variant="secondary" icon={RotateCcw} onClick={() => reopenJob(job.id)}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={RotateCcw}
+                    onClick={() => setPendingAction({ job, type: 'reopen' })}
+                  >
                     Reopen
                   </Button>
                 )}
@@ -129,13 +136,21 @@ export default function EmployerJobsPage() {
 
       <ConfirmDialog
         open={Boolean(pendingAction)}
-        title={pendingAction?.type === 'delete' ? 'Delete this job?' : 'Close this job?'}
+        title={
+          pendingAction?.type === 'delete'
+            ? 'Delete this job?'
+            : pendingAction?.type === 'reopen'
+              ? 'Reopen this job?'
+              : 'Close this job?'
+        }
         message={
           pendingAction?.type === 'delete'
             ? `"${pendingAction.job.title}" will be permanently deleted. This cannot be undone.`
-            : `"${pendingAction?.job.title}" will no longer appear in candidate job discovery. You can reopen it anytime.`
+            : pendingAction?.type === 'reopen'
+              ? `"${pendingAction.job.title}" will be visible again in candidate job discovery.`
+              : `"${pendingAction?.job.title}" will no longer appear in candidate job discovery. You can reopen it anytime.`
         }
-        confirmLabel={pendingAction?.type === 'delete' ? 'Delete' : 'Close Job'}
+        confirmLabel={pendingAction?.type === 'delete' ? 'Delete' : pendingAction?.type === 'reopen' ? 'Reopen' : 'Close Job'}
         variant={pendingAction?.type === 'delete' ? 'danger' : 'primary'}
         confirming={busy}
         onConfirm={handleConfirm}

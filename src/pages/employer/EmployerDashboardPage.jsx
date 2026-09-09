@@ -18,6 +18,9 @@ import {
   MapPin,
   Video,
   Phone,
+  Clock,
+  BadgeCheck,
+  ShieldX,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import DashboardCard from '../../components/ui/DashboardCard'
@@ -46,6 +49,16 @@ import { INTERVIEW_TYPE_LABELS } from '../../lib/interviewForm'
 const PIPELINE_STATUSES = ['applied', 'reviewing', 'shortlisted', 'interview', 'rejected', 'hired', 'withdrawn']
 
 const INTERVIEW_TYPE_ICONS = { online: Video, phone: Phone, in_person: MapPin }
+
+// Same terminology/status set as EmployerCompanyPage's STATUS_META -- a
+// profile with no verificationStatus field at all (written before this
+// feature existed) is treated as 'pending' here too, matching the same
+// .get(key, 'pending') default firestore.rules already uses.
+const VERIFICATION_STATUS_META = {
+  pending: { label: 'Verification Pending', icon: Clock, className: 'bg-amber-50 text-amber-600' },
+  verified: { label: 'Verified Employer', icon: BadgeCheck, className: 'bg-success-50 text-success-700' },
+  rejected: { label: 'Verification Rejected', icon: ShieldX, className: 'bg-red-50 text-red-600' },
+}
 
 function UpcomingInterviewRow({ interview }) {
   const Icon = INTERVIEW_TYPE_ICONS[interview.interviewType] || CalendarDays
@@ -121,6 +134,7 @@ export default function EmployerDashboardPage() {
   const { unreadCount: chatUnread, loading: chatLoading } = useConversations()
   const [updatingId, setUpdatingId] = useState(null)
   const companyCompletion = calculateCompanyProfileCompletion(companyProfile)
+  const verificationStatus = VERIFICATION_STATUS_META[companyProfile?.verificationStatus || 'pending']
 
   // The 4 primary stat cards live in one shared block (same as the
   // page's original design) -- extending the existing jobs+applications
@@ -191,6 +205,17 @@ export default function EmployerDashboardPage() {
           </Link>
         }
       />
+
+      {/* Status only -- the rejection note (if any) already has a home on
+          Company Profile; this chip exists so the employer isn't left
+          guessing at their status without a separate visit there. */}
+      {!companyProfileLoading && companyProfile && (
+        <span
+          className={`mb-4 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${verificationStatus.className}`}
+        >
+          <verificationStatus.icon size={13} /> {verificationStatus.label}
+        </span>
+      )}
 
       {loading && <p className="py-8 text-center text-sm text-navy-400">Loading dashboard...</p>}
 
