@@ -14,8 +14,16 @@ export default function useApplicationInterviewActions(application, interview, o
     async (fields) => {
       setSaving(true)
       try {
-        await scheduleInterview(application, fields)
+        // Result (`{ id, statusSynced }`) is returned to the caller rather
+        // than discarded -- `statusSynced: false` means the interview
+        // itself scheduled successfully but the application's pipeline
+        // status couldn't be advanced to 'interview' (see
+        // interviewService.scheduleInterview). Callers that want to warn
+        // about that partial outcome can check it; ones that don't still
+        // get the same success behavior as before.
+        const result = await scheduleInterview(application, fields)
         onChange()
+        return result
       } finally {
         setSaving(false)
       }

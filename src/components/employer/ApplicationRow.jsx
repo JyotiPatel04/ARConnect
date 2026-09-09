@@ -65,7 +65,18 @@ export default function ApplicationRow({
       if (isActive) {
         await edit(fields)
       } else {
-        await schedule(fields)
+        // The interview itself is scheduled successfully either way (this
+        // doesn't throw) -- statusSynced: false only means the
+        // application's own pipeline status couldn't be auto-advanced to
+        // 'interview' (a rare secondary-write failure, not a scheduling
+        // failure). Surfaced here rather than silently swallowed, so the
+        // employer knows to set it manually instead of assuming it happened.
+        const result = await schedule(fields)
+        if (result && result.statusSynced === false) {
+          setInterviewError(
+            'Interview scheduled, but the application status could not be updated automatically — please set it to "Interview" manually.'
+          )
+        }
       }
       setDialogOpen(false)
     } catch (err) {
