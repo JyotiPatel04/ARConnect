@@ -1,4 +1,4 @@
-import { Users, GraduationCap, Building2, Briefcase, Zap, ClipboardList, AlertCircle } from 'lucide-react'
+import { Users, GraduationCap, Building2, Briefcase, Zap, ClipboardList, ShieldAlert, AlertCircle } from 'lucide-react'
 import DashboardCard from '../../components/ui/DashboardCard'
 import EmptyState from '../../components/ui/EmptyState'
 import PageHeader from '../../components/PageHeader'
@@ -12,6 +12,7 @@ const CARDS = [
   { key: 'totalJobs', label: 'Total Jobs', icon: Briefcase, tone: 'default' },
   { key: 'activeJobs', label: 'Active Jobs', icon: Zap, tone: 'success' },
   { key: 'totalApplications', label: 'Applications', icon: ClipboardList, tone: 'warning' },
+  { key: 'pendingVerifications', label: 'Pending Verifications', icon: ShieldAlert, tone: 'warning' },
 ]
 
 export default function AdminDashboardPage() {

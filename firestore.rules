@@ -147,6 +147,20 @@ service cloud.firestore {
         : 0;
     }
 
+    // Reads the employer's current public verification flag, same
+    // existence-check-then-get shape as jobPostCountFor() just above.
+    // Used only at job CREATE time (see jobs.create below) so a new job's
+    // employerVerified snapshot always reflects real, server-side company
+    // state — never a client-supplied claim. Employer verification
+    // happening later never touches this snapshot (see jobs.update's
+    // immutability pin) — existing jobs deliberately keep whatever badge
+    // state they were created with.
+    function companyVerifiedFor(employerId) {
+      return exists(/databases/$(database)/documents/companySummaries/$(employerId))
+        ? get(/databases/$(database)/documents/companySummaries/$(employerId)).data.get('verified', false)
+        : false;
+    }
+
     // jobs/{jobId} — public listings, owned by the employer who posted them.
     match /jobs/{jobId} {
       allow read: if true;
@@ -174,12 +188,24 @@ service cloud.firestore {
       // elsewhere in this file, a client bypassing the UI entirely could
       // choose not to increment it, but could never move it backward
       // (jobPostCounters.update below only ever allows +1).
+      // employerVerified is never a client-supplied claim — it must
+      // exactly match the employer's REAL, current public verification
+      // flag (companyVerifiedFor(), a get() the client can't influence),
+      // the same jobFor()/applicationFor()-style trust pattern used
+      // everywhere else in this file. This is what makes the Verified
+      // Employer badge structurally impossible to self-grant. .get(key,
+      // false) rather than direct access — a create request that omits
+      // the field entirely (every jobs.create test written before this
+      // field existed) is treated as claiming false, which still has to
+      // match the real value, so an unverified employer's job is
+      // unaffected either way and no pre-existing test needed updating.
       allow create: if isSignedIn()
         && isNotSuspended()
         && callerRole() == 'employer'
         && request.auth.token.email_verified == true
         && request.resource.data.employerId == request.auth.uid
         && request.resource.data.applicationCount == 0
+        && request.resource.data.get('employerVerified', false) == companyVerifiedFor(request.auth.uid)
         && jobPostCountFor(request.auth.uid) < 1000;
 
       allow update: if isSignedIn() && (
@@ -211,6 +237,11 @@ service cloud.firestore {
           && request.resource.data.employerId == resource.data.employerId
           && request.resource.data.applicationCount == resource.data.applicationCount
           && request.resource.data.status in ['active', 'closed']
+          // Verification is a permanent, creation-time snapshot (see
+          // companyVerifiedFor() above) — becoming verified/rejected later
+          // never touches a job that already exists, even the employer's
+          // own. Default-aware for jobs created before this field existed.
+          && request.resource.data.get('employerVerified', false) == resource.data.get('employerVerified', false)
         )
         ||
         // The only other party ever allowed to touch a job document is a
@@ -229,18 +260,22 @@ service cloud.firestore {
           && request.resource.data.applicationCount == resource.data.applicationCount + 1
           && request.resource.data.employerId == resource.data.employerId
           && request.resource.data.status == resource.data.status
+          && request.resource.data.get('employerVerified', false) == resource.data.get('employerVerified', false)
         )
         ||
         // Phase 9 admin moderation: the ONLY thing this path may ever
         // change is status (active/closed) — ownership and application
         // history (applicationCount) are pinned explicitly equal, so an
         // admin closing a problematic job can never reassign it or touch
-        // its application count.
+        // its application count. employerVerified is pinned the same way —
+        // admin verification acts on companyProfiles/companySummaries
+        // (see those collections above), never on individual job docs.
         (
           callerRole() == 'admin'
           && request.resource.data.status in ['active', 'closed']
           && request.resource.data.employerId == resource.data.employerId
           && request.resource.data.applicationCount == resource.data.applicationCount
+          && request.resource.data.get('employerVerified', false) == resource.data.get('employerVerified', false)
         )
       );
 
@@ -430,13 +465,58 @@ service cloud.firestore {
     // never redact individual fields per-reader — that's why the public,
     // candidate-facing view lives in a SEPARATE collection (companySummaries,
     // below) rather than trying to carve exceptions into this one.
+    //
+    // Employer verification: admin can read here (to review the company
+    // before approving/rejecting) and can update, but ONLY verificationStatus
+    // and verificationNote — every other field, including the private
+    // contact details this doc exists to protect, stays pinned exactly
+    // equal. Deliberately NOT publicly readable (contact details live
+    // here) — see companySummaries below for what candidates actually see.
     match /companyProfiles/{userId} {
-      allow read: if isOwner(userId);
+      allow read: if isOwner(userId) || callerRole() == 'admin';
 
-      allow create, update: if isOwner(userId)
+      allow create: if isOwner(userId)
         && isNotSuspended()
         && callerRole() == 'employer'
         && request.resource.data.employerId == userId;
+
+      // Missing verificationStatus/verificationNote (any profile written
+      // before this feature existed) is treated as 'pending'/null via the
+      // same .get(key, default) pattern already used for moderationStatus
+      // elsewhere in this file — no migration needed for the owner branch
+      // to keep working exactly as it did before these fields existed.
+      allow update: if
+        (
+          isOwner(userId)
+          && isNotSuspended()
+          && callerRole() == 'employer'
+          && request.resource.data.employerId == userId
+          && request.resource.data.get('verificationStatus', 'pending') == resource.data.get('verificationStatus', 'pending')
+          && request.resource.data.get('verificationNote', null) == resource.data.get('verificationNote', null)
+        )
+        ||
+        (
+          // Admin verification: the ONLY thing this path may ever change is
+          // verificationStatus (+ verificationNote, the reason shown back to
+          // the employer) — every other field, company info and contact
+          // details alike, is pinned explicitly equal, so an admin
+          // approving/rejecting a company can never edit its actual content.
+          callerRole() == 'admin'
+          && request.resource.data.employerId == resource.data.employerId
+          && request.resource.data.companyName == resource.data.companyName
+          && request.resource.data.companyLogoUrl == resource.data.companyLogoUrl
+          && request.resource.data.industry == resource.data.industry
+          && request.resource.data.companySize == resource.data.companySize
+          && request.resource.data.location == resource.data.location
+          && request.resource.data.website == resource.data.website
+          && request.resource.data.about == resource.data.about
+          && request.resource.data.contactEmail == resource.data.contactEmail
+          && request.resource.data.contactPhone == resource.data.contactPhone
+          && request.resource.data.foundedYear == resource.data.foundedYear
+          && request.resource.data.profileComplete == resource.data.profileComplete
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.verificationStatus in ['verified', 'rejected']
+        );
 
       allow delete: if false;
     }
@@ -450,15 +530,47 @@ service cloud.firestore {
     // just by client convention: no write containing either field can
     // ever succeed here, regardless of what a buggy or malicious client
     // sends.
+    //
+    // `verified` mirrors companyProfiles.verificationStatus (true only once
+    // verified) so candidate-facing UI never needs to read the private
+    // profile doc — same denormalization reasoning as every other field
+    // here. Same admin-only-touches-verification split as companyProfiles.
     match /companySummaries/{userId} {
       allow read: if true;
 
-      allow create, update: if isOwner(userId)
+      allow create: if isOwner(userId)
         && isNotSuspended()
         && callerRole() == 'employer'
         && request.resource.data.employerId == userId
         && !('contactEmail' in request.resource.data)
         && !('contactPhone' in request.resource.data);
+
+      allow update: if
+        (
+          isOwner(userId)
+          && isNotSuspended()
+          && callerRole() == 'employer'
+          && request.resource.data.employerId == userId
+          && !('contactEmail' in request.resource.data)
+          && !('contactPhone' in request.resource.data)
+          && request.resource.data.get('verified', false) == resource.data.get('verified', false)
+        )
+        ||
+        (
+          callerRole() == 'admin'
+          && request.resource.data.employerId == resource.data.employerId
+          && request.resource.data.companyName == resource.data.companyName
+          && request.resource.data.companyLogoUrl == resource.data.companyLogoUrl
+          && request.resource.data.industry == resource.data.industry
+          && request.resource.data.companySize == resource.data.companySize
+          && request.resource.data.location == resource.data.location
+          && request.resource.data.website == resource.data.website
+          && request.resource.data.about == resource.data.about
+          && request.resource.data.foundedYear == resource.data.foundedYear
+          && !('contactEmail' in request.resource.data)
+          && !('contactPhone' in request.resource.data)
+          && request.resource.data.verified is bool
+        );
 
       allow delete: if false;
     }
@@ -583,6 +695,18 @@ service cloud.firestore {
           && request.resource.data.type == 'job_alert_match'
           && request.resource.data.recipientId == request.auth.uid
         )
+        ||
+        // 8. Admin notifies an employer of a company verification decision.
+        // Unlike every branch above, there's no other-party application/
+        // interview document to verify recipientId against — admin's role
+        // alone is the trust boundary here, the same level of trust
+        // users.update's moderation branch already extends to admin
+        // platform-wide (suspend/unsuspend any account with no further
+        // per-target proof required).
+        (
+          callerRole() == 'admin'
+          && request.resource.data.type in ['employer_verification_approved', 'employer_verification_rejected']
+        )
       );
 
       // Only the recipient may ever touch their own notification, and
@@ -621,9 +745,9 @@ service cloud.firestore {
         && request.resource.data.adminId == request.auth.uid
         && request.resource.data.action in [
           'user_suspended', 'user_unsuspended', 'job_closed', 'job_reopened',
-          'report_reviewed', 'report_dismissed'
+          'report_reviewed', 'report_dismissed', 'employer_verified', 'employer_rejected'
         ]
-        && request.resource.data.targetType in ['user', 'job', 'report']
+        && request.resource.data.targetType in ['user', 'job', 'report', 'company']
         && request.resource.data.reason is string
         && request.resource.data.reason.size() >= 3
         && request.resource.data.reason.size() <= 500;

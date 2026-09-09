@@ -279,6 +279,115 @@ describe('jobPostCounters -- ownership and monotonic increment (Phase 17 P2 fix)
   })
 })
 
+// Employer Verification: employerVerified is a creation-time snapshot of
+// companySummaries.verified (see companyVerifiedFor() in firestore.rules
+// and employerJobService.createJob), never a client-supplied claim.
+async function seedCompanySummary(uid, verified) {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'companySummaries', uid), {
+      employerId: uid, companyName: 'Co', verified,
+    })
+  })
+}
+
+describe('jobs.create -- employerVerified must match real company state', () => {
+  test('a verified employer creating a job with employerVerified: true succeeds', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    await seedCompanySummary(uid, true)
+    const db = testEnv.authenticatedContext(uid, { email: 'e@x.com', email_verified: true }).firestore()
+    await assertSucceeds(
+      setDoc(doc(db, 'jobs', nextId('job')), {
+        employerId: uid, title: 'Sales Executive', companyName: 'Co', status: 'active', applicationCount: 0, employerVerified: true,
+      })
+    )
+  })
+
+  test('an UNVERIFIED employer cannot claim employerVerified: true', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    await seedCompanySummary(uid, false)
+    const db = testEnv.authenticatedContext(uid, { email: 'e@x.com', email_verified: true }).firestore()
+    await assertFails(
+      setDoc(doc(db, 'jobs', nextId('job')), {
+        employerId: uid, title: 'Sales Executive', companyName: 'Co', status: 'active', applicationCount: 0, employerVerified: true,
+      })
+    )
+  })
+
+  test('a verified employer under-claiming employerVerified: false is also denied (must match exactly)', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    await seedCompanySummary(uid, true)
+    const db = testEnv.authenticatedContext(uid, { email: 'e@x.com', email_verified: true }).firestore()
+    await assertFails(
+      setDoc(doc(db, 'jobs', nextId('job')), {
+        employerId: uid, title: 'Sales Executive', companyName: 'Co', status: 'active', applicationCount: 0, employerVerified: false,
+      })
+    )
+  })
+
+  test('an employer with no company profile/summary at all defaults to unverified', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    const db = testEnv.authenticatedContext(uid, { email: 'e@x.com', email_verified: true }).firestore()
+    await assertSucceeds(
+      setDoc(doc(db, 'jobs', nextId('job')), {
+        employerId: uid, title: 'Sales Executive', companyName: 'Co', status: 'active', applicationCount: 0, employerVerified: false,
+      })
+    )
+    await assertFails(
+      setDoc(doc(db, 'jobs', nextId('job')), {
+        employerId: uid, title: 'Sales Executive', companyName: 'Co', status: 'active', applicationCount: 0, employerVerified: true,
+      })
+    )
+  })
+
+  test('omitting employerVerified entirely still works for an unverified employer (backward-compatible default)', async () => {
+    const uid = nextId('emp')
+    await seedEmployerUser(uid, 'e@x.com')
+    const db = testEnv.authenticatedContext(uid, { email: 'e@x.com', email_verified: true }).firestore()
+    await assertSucceeds(
+      setDoc(doc(db, 'jobs', nextId('job')), {
+        employerId: uid, title: 'Sales Executive', companyName: 'Co', status: 'active', applicationCount: 0,
+      })
+    )
+  })
+})
+
+describe('jobs.update -- employerVerified is a permanent, immutable snapshot', () => {
+  test('employer cannot flip their own existing job to employerVerified: true after becoming verified', async () => {
+    const { empA, jobA } = await seedJob()
+    await seedCompanySummary(empA, true)
+    const db = testEnv.authenticatedContext(empA).firestore()
+    await assertFails(updateDoc(doc(db, 'jobs', jobA), { employerVerified: true }))
+  })
+
+  test('employer editing unrelated fields on an already-verified job keeps succeeding (no accidental lock-out)', async () => {
+    const empA = nextId('emp'), jobA = nextId('job')
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'users', empA), { role: 'employer', full_name: 'Emp', email: 'e@x.com' })
+      await setDoc(doc(db, 'jobs', jobA), {
+        employerId: empA, title: 'Sales Executive', companyName: 'Co', status: 'active', applicationCount: 0, employerVerified: true,
+      })
+    })
+    const db = testEnv.authenticatedContext(empA).firestore()
+    await assertSucceeds(updateDoc(doc(db, 'jobs', jobA), { title: 'Senior Sales Executive' }))
+  })
+
+  test('admin moderation (close/reopen) cannot change employerVerified either', async () => {
+    const { jobA } = await seedJob()
+    const adminUid = nextId('admin')
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users', adminUid), { role: 'admin', full_name: 'Admin', email: 'admin@x.com' })
+    })
+    const db = testEnv.authenticatedContext(adminUid).firestore()
+    await assertFails(updateDoc(doc(db, 'jobs', jobA), { status: 'closed', employerVerified: true }))
+    await assertSucceeds(updateDoc(doc(db, 'jobs', jobA), { status: 'closed' }))
+  })
+})
+
 describe('jobs.delete -- legitimate hard-delete behavior unchanged', () => {
   test('employer CAN hard-delete their own job once applicationCount is genuinely zero', async () => {
     const { empA, jobA } = await seedJob({ applicationCount: 0 })

@@ -1,21 +1,37 @@
-// Same react-dom/server pattern as ErrorBoundary.test.js -- no new
-// dependency, no environment change. useDocumentTitle's document.title
-// write is inside a useEffect, which SSR never runs, so this is safe.
+// SSR-safe, same pattern as SuspendedBanner.test.js: AuthContext is driven
+// directly via its Provider rather than mocking Firebase. useAdminVerifications'
+// actual data fetch lives inside a useEffect, which renderToStaticMarkup
+// never runs, so this only proves the page's static shell (no crash, no
+// leftover fake-data placeholder copy, correct initial loading state) --
+// the real approve/reject flow against live data is covered by
+// tests/e2e/employer-verification.spec.js instead.
 import { describe, test, expect } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { AuthContext } from '../../context/auth-context.js'
 import AdminVerificationsPage from './AdminVerificationsPage.jsx'
 
-describe('AdminVerificationsPage (Phase 17: fake data removed)', () => {
-  test('states the workflow is not yet available, with no fabricated data or dead actions', () => {
-    const html = renderToStaticMarkup(createElement(AdminVerificationsPage))
-    expect(html).toContain('not yet available')
-    // The old page fabricated a "312 items pending review" count, three
-    // fake company/job records, and an Approve button with no handler --
-    // none of that should exist anymore.
-    expect(html).not.toContain('pending review')
+function renderPage() {
+  return renderToStaticMarkup(
+    createElement(
+      AuthContext.Provider,
+      { value: { user: { uid: 'admin1' }, role: 'admin', profile: { role: 'admin' } } },
+      createElement(AdminVerificationsPage)
+    )
+  )
+}
+
+describe('AdminVerificationsPage (real employer verification workflow)', () => {
+  test('no longer shows the old "Coming Soon" placeholder or its fabricated data', () => {
+    const html = renderPage()
+    expect(html).not.toContain('Coming Soon')
+    expect(html).not.toContain('not yet available')
     expect(html).not.toContain('QuickServe')
     expect(html).not.toContain('TechNova')
-    expect(html).not.toContain('Approve')
+  })
+
+  test('renders its initial loading state without crashing', () => {
+    const html = renderPage()
+    expect(html).toContain('Loading pending verifications')
   })
 })

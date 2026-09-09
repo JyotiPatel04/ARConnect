@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, getDocs, increment, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { collection, deleteDoc, doc, getDoc, getDocs, increment, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 
 const jobsRef = collection(db, 'jobs')
@@ -13,6 +13,18 @@ export async function listJobsByEmployer(employerId) {
 
 export async function createJob({ employerId, ...fields }) {
   const ref = doc(jobsRef)
+
+  // A permanent, creation-time snapshot of the employer's CURRENT public
+  // verification flag (firestore.rules' companyVerifiedFor() independently
+  // re-verifies this exact value server-side, so this read isn't a trust
+  // boundary — just what builds the value this client sends). Verification
+  // happening later never touches jobs that already exist — see
+  // firestore.rules' jobs.update immutability pin — so this is the only
+  // moment a job's badge state is ever decided. Missing company summary
+  // (no profile created yet) reads as not verified, same default the
+  // rules themselves fall back to.
+  const summarySnap = await getDoc(doc(db, 'companySummaries', employerId))
+  const employerVerified = summarySnap.exists() ? Boolean(summarySnap.data().verified) : false
 
   // Batched with the job-post counter (Phase 17 P2, see firestore.rules'
   // jobPostCountFor()/jobPostCounters) so the counter that gates future
@@ -29,6 +41,7 @@ export async function createJob({ employerId, ...fields }) {
     employerId,
     status: 'active',
     applicationCount: 0,
+    employerVerified,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })

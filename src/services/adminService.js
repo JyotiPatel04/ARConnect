@@ -12,12 +12,27 @@ import { ADMIN_LIST_LIMIT, isListTruncated } from '../lib/adminList'
 const usersRef = collection(db, 'users')
 const jobsRef = collection(db, 'jobs')
 const applicationsRef = collection(db, 'applications')
+const companyProfilesRef = collection(db, 'companyProfiles')
 
 // Aggregation queries (count-only, no documents downloaded) — cheap, and
 // governed by the exact same security rules as any other read of these
 // collections.
+//
+// Pending Verifications limitation: this counts documents where
+// verificationStatus == 'pending' explicitly. Firestore has no query
+// operator for "field is absent", so a companyProfiles doc written before
+// this feature existed (no verificationStatus field at all) is NOT
+// counted here, even though every other read path in this app treats a
+// missing field as 'pending' (see firestore.rules' own .get(key,
+// 'pending') default, and companyProfileService). Downloading the whole
+// collection just to filter client-side would defeat the point of an
+// aggregation query at any real scale, and a one-off backfill script was
+// explicitly out of scope for this feature. In practice this self-heals:
+// companyProfileService.upsertMyCompanyProfile now always writes an
+// explicit verificationStatus on every save, so any pre-existing employer
+// who edits their profile at all becomes counted from that point on.
 export async function getPlatformStats() {
-  const [totalUsers, totalCandidates, totalEmployers, totalJobs, activeJobs, totalApplications] =
+  const [totalUsers, totalCandidates, totalEmployers, totalJobs, activeJobs, totalApplications, pendingVerifications] =
     await Promise.all([
       getCountFromServer(usersRef),
       getCountFromServer(query(usersRef, where('role', '==', 'candidate'))),
@@ -25,6 +40,7 @@ export async function getPlatformStats() {
       getCountFromServer(jobsRef),
       getCountFromServer(query(jobsRef, where('status', '==', 'active'))),
       getCountFromServer(applicationsRef),
+      getCountFromServer(query(companyProfilesRef, where('verificationStatus', '==', 'pending'))),
     ])
 
   return {
@@ -34,7 +50,20 @@ export async function getPlatformStats() {
     totalJobs: totalJobs.data().count,
     activeJobs: activeJobs.data().count,
     totalApplications: totalApplications.data().count,
+    pendingVerifications: pendingVerifications.data().count,
   }
+}
+
+// Same cap-and-sort-client-side shape as listAllUsers/listAllJobs/
+// listAllApplications below. Same missing-field limitation as the count
+// above -- see getPlatformStats' comment.
+export async function listPendingEmployerVerifications() {
+  const snap = await getDocs(
+    query(companyProfilesRef, where('verificationStatus', '==', 'pending'), limit(ADMIN_LIST_LIMIT))
+  )
+  const profiles = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  profiles.sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0))
+  return { items: profiles, truncated: isListTruncated(snap.size) }
 }
 
 // Phase 17 P2: capped at ADMIN_LIST_LIMIT (see src/lib/adminList.js) rather

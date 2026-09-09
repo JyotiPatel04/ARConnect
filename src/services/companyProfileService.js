@@ -30,6 +30,17 @@ export async function upsertMyCompanyProfile(uid, data) {
   const existing = await getDoc(profileRef)
   const now = new Date()
 
+  // Verification is admin-owned (see moderationService.setEmployerVerificationStatus)
+  // and must survive an unrelated profile edit -- both writes below are
+  // set(), which replaces the whole document, so omitting these fields
+  // here would silently reset a verified/rejected company back to a
+  // missing field on its very next save. A brand-new profile always
+  // starts 'pending', matching how a genuinely missing field already
+  // reads everywhere else in the app (the security rules' own
+  // .get(key, 'pending') default).
+  const verificationStatus = existing.exists() ? existing.data().verificationStatus || 'pending' : 'pending'
+  const verificationNote = existing.exists() ? existing.data().verificationNote ?? null : null
+
   const profile = {
     employerId: uid,
     companyName: data.companyName || '',
@@ -42,6 +53,8 @@ export async function upsertMyCompanyProfile(uid, data) {
     contactEmail: data.contactEmail || '',
     contactPhone: data.contactPhone || '',
     foundedYear: data.foundedYear ?? null,
+    verificationStatus,
+    verificationNote,
   }
   // Single source of truth: the same function drives the on-screen
   // completion meter and the stored flag, so they can never disagree.
@@ -51,6 +64,10 @@ export async function upsertMyCompanyProfile(uid, data) {
   // field rather than via destructuring, so it's obvious at a glance that
   // contactEmail/contactPhone never appear here (the security rule also
   // enforces this structurally, independent of this client code).
+  // `verified` is derived from the SAME preserved verificationStatus
+  // rather than a separate read of the summary doc — one extra read
+  // (profileRef, already fetched above) instead of two, and the two
+  // documents can never disagree about what "verified" means.
   const summary = {
     employerId: uid,
     companyName: profile.companyName,
@@ -61,6 +78,7 @@ export async function upsertMyCompanyProfile(uid, data) {
     website: profile.website,
     about: profile.about,
     foundedYear: profile.foundedYear,
+    verified: verificationStatus === 'verified',
   }
 
   const batch = writeBatch(db)

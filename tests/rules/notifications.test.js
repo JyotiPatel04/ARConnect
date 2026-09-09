@@ -231,6 +231,63 @@ describe('notifications.create -- branch 6: chat new_message (Feature 1)', () =>
   })
 })
 
+describe('notifications.create -- branch 8: admin notifies an employer of a verification decision', () => {
+  async function seedAdmin() {
+    const adminA = nextId('admin')
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users', adminA), { role: 'admin', full_name: 'Admin', email: 'admin@x.com' })
+    })
+    return adminA
+  }
+
+  test('admin can notify an employer of an approval', async () => {
+    const f = await seedScenario()
+    const adminA = await seedAdmin()
+    const db = testEnv.authenticatedContext(adminA).firestore()
+    await assertSucceeds(
+      setDoc(doc(db, 'notifications', nextId('notif')), {
+        recipientId: f.empA, type: 'employer_verification_approved', title: 'Company Verified', message: 'x',
+        relatedJobId: null, relatedApplicationId: null, read: false, createdAt: serverTimestamp(),
+      })
+    )
+  })
+
+  test('admin can notify an employer of a rejection', async () => {
+    const f = await seedScenario()
+    const adminA = await seedAdmin()
+    const db = testEnv.authenticatedContext(adminA).firestore()
+    await assertSucceeds(
+      setDoc(doc(db, 'notifications', nextId('notif')), {
+        recipientId: f.empA, type: 'employer_verification_rejected', title: 'Verification Rejected', message: 'x',
+        relatedJobId: null, relatedApplicationId: null, read: false, createdAt: serverTimestamp(),
+      })
+    )
+  })
+
+  test('a non-admin cannot create a verification-decision notification', async () => {
+    const f = await seedScenario()
+    const db = testEnv.authenticatedContext(f.empB).firestore()
+    await assertFails(
+      setDoc(doc(db, 'notifications', nextId('notif')), {
+        recipientId: f.empA, type: 'employer_verification_approved', title: 'Company Verified', message: 'x',
+        relatedJobId: null, relatedApplicationId: null, read: false, createdAt: serverTimestamp(),
+      })
+    )
+  })
+
+  test('admin cannot use this branch to create a notification of an unrelated type', async () => {
+    const f = await seedScenario()
+    const adminA = await seedAdmin()
+    const db = testEnv.authenticatedContext(adminA).firestore()
+    await assertFails(
+      setDoc(doc(db, 'notifications', nextId('notif')), {
+        recipientId: f.empA, type: 'made_up_type', title: 'x', message: 'y',
+        relatedJobId: null, relatedApplicationId: null, read: false, createdAt: serverTimestamp(),
+      })
+    )
+  })
+})
+
 describe('notifications.read / update -- recipient-only, field pinning', () => {
   async function seedNotification(f) {
     const notifId = nextId('notif')
