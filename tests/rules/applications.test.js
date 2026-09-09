@@ -133,6 +133,87 @@ describe('applications.create -- ownership and spoofing', () => {
   })
 })
 
+// resumeFileUrl/resumeFileName are optional (many candidates have no
+// resume) and, when present, must exactly match the caller's OWN
+// candidateProfiles doc (candidateProfileFor() in firestore.rules) --
+// same jobFor()-style cross-verification as every other denormalized
+// field on this collection.
+async function seedCandidateResume(candidateId, { resumeFileUrl = 'https://storage.example.com/resumes/x?token=abc', resumeFileName = 'resume.pdf' } = {}) {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'candidateProfiles', candidateId), {
+      candidateId, resumeFileUrl, resumeFileName,
+    })
+  })
+}
+
+describe('applications.create -- resumeFileUrl/resumeFileName', () => {
+  test('candidate can create an application with their own resume reference', async () => {
+    const f = await seedScenario({ appStatus: null })
+    await seedCandidateResume(f.candA)
+    const db = testEnv.authenticatedContext(f.candA).firestore()
+    await assertSucceeds(
+      setDoc(doc(db, 'applications', f.appA), {
+        candidateId: f.candA, jobId: f.jobA, employerId: f.empA, status: 'applied',
+        jobTitle: 'J', companyName: 'Co', candidateName: 'Cand A', candidateEmail: 'a@c.com',
+        resumeFileUrl: 'https://storage.example.com/resumes/x?token=abc', resumeFileName: 'resume.pdf',
+        appliedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      })
+    )
+  })
+
+  test('candidate can create an application without a resume (fields omitted)', async () => {
+    const f = await seedScenario({ appStatus: null })
+    const db = testEnv.authenticatedContext(f.candA).firestore()
+    await assertSucceeds(
+      setDoc(doc(db, 'applications', f.appA), {
+        candidateId: f.candA, jobId: f.jobA, employerId: f.empA, status: 'applied',
+        jobTitle: 'J', companyName: 'Co', candidateName: 'Cand A', candidateEmail: 'a@c.com',
+        appliedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      })
+    )
+  })
+
+  test('candidate can create an application without a resume (fields explicitly null)', async () => {
+    const f = await seedScenario({ appStatus: null })
+    const db = testEnv.authenticatedContext(f.candA).firestore()
+    await assertSucceeds(
+      setDoc(doc(db, 'applications', f.appA), {
+        candidateId: f.candA, jobId: f.jobA, employerId: f.empA, status: 'applied',
+        jobTitle: 'J', companyName: 'Co', candidateName: 'Cand A', candidateEmail: 'a@c.com',
+        resumeFileUrl: null, resumeFileName: null,
+        appliedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      })
+    )
+  })
+
+  test('candidate CANNOT create an application using another candidate\'s resume reference', async () => {
+    const f = await seedScenario({ appStatus: null })
+    await seedCandidateResume(f.candB, { resumeFileUrl: 'https://storage.example.com/resumes/other?token=zzz', resumeFileName: 'other.pdf' })
+    const db = testEnv.authenticatedContext(f.candA).firestore()
+    await assertFails(
+      setDoc(doc(db, 'applications', f.appA), {
+        candidateId: f.candA, jobId: f.jobA, employerId: f.empA, status: 'applied',
+        jobTitle: 'J', companyName: 'Co', candidateName: 'Cand A', candidateEmail: 'a@c.com',
+        resumeFileUrl: 'https://storage.example.com/resumes/other?token=zzz', resumeFileName: 'other.pdf',
+        appliedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      })
+    )
+  })
+
+  test('candidate with NO candidateProfiles doc at all cannot claim a resume reference', async () => {
+    const f = await seedScenario({ appStatus: null })
+    const db = testEnv.authenticatedContext(f.candA).firestore()
+    await assertFails(
+      setDoc(doc(db, 'applications', f.appA), {
+        candidateId: f.candA, jobId: f.jobA, employerId: f.empA, status: 'applied',
+        jobTitle: 'J', companyName: 'Co', candidateName: 'Cand A', candidateEmail: 'a@c.com',
+        resumeFileUrl: 'https://storage.example.com/resumes/made-up?token=fake', resumeFileName: 'fake.pdf',
+        appliedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      })
+    )
+  })
+})
+
 const SIX_STATUSES = ['applied', 'reviewing', 'shortlisted', 'interview', 'rejected', 'hired']
 
 describe('applications.update -- full six-status employer transition matrix', () => {
@@ -177,6 +258,38 @@ describe('applications.update -- full six-status employer transition matrix', ()
     const f = await seedScenario({ appStatus: 'applied', empSuspended: true })
     const db = testEnv.authenticatedContext(f.empA).firestore()
     await assertFails(updateDoc(doc(db, 'applications', f.appA), { status: 'reviewing' }))
+  })
+
+  test('employer cannot modify resumeFileUrl during a status update', async () => {
+    const f = await seedScenario({ appStatus: 'applied' })
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), 'applications', f.appA), {
+        resumeFileUrl: 'https://storage.example.com/resumes/x?token=abc', resumeFileName: 'resume.pdf',
+      })
+    })
+    const db = testEnv.authenticatedContext(f.empA).firestore()
+    await assertFails(
+      updateDoc(doc(db, 'applications', f.appA), {
+        status: 'reviewing', resumeFileUrl: 'https://storage.example.com/resumes/tampered?token=zzz',
+      })
+    )
+  })
+
+  test('employer cannot modify resumeFileName during a status update', async () => {
+    const f = await seedScenario({ appStatus: 'applied' })
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), 'applications', f.appA), {
+        resumeFileUrl: 'https://storage.example.com/resumes/x?token=abc', resumeFileName: 'resume.pdf',
+      })
+    })
+    const db = testEnv.authenticatedContext(f.empA).firestore()
+    await assertFails(updateDoc(doc(db, 'applications', f.appA), { status: 'reviewing', resumeFileName: 'tampered.pdf' }))
+  })
+
+  test('a normal status update on an application with NO resume fields (pre-existing shape) still succeeds', async () => {
+    const f = await seedScenario({ appStatus: 'applied' })
+    const db = testEnv.authenticatedContext(f.empA).firestore()
+    await assertSucceeds(updateDoc(doc(db, 'applications', f.appA), { status: 'shortlisted', updatedAt: serverTimestamp() }))
   })
 })
 
@@ -231,6 +344,32 @@ describe('applications.update -- candidate withdrawal ownership and lifecycle', 
     const f = await seedScenario({ appStatus: 'applied', candSuspended: true })
     const db = testEnv.authenticatedContext(f.candA).firestore()
     await assertFails(updateDoc(doc(db, 'applications', f.appA), { status: 'withdrawn' }))
+  })
+
+  test('candidate cannot modify resumeFileUrl while withdrawing', async () => {
+    const f = await seedScenario({ appStatus: 'applied' })
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), 'applications', f.appA), {
+        resumeFileUrl: 'https://storage.example.com/resumes/x?token=abc', resumeFileName: 'resume.pdf',
+      })
+    })
+    const db = testEnv.authenticatedContext(f.candA).firestore()
+    await assertFails(
+      updateDoc(doc(db, 'applications', f.appA), {
+        status: 'withdrawn', resumeFileUrl: 'https://storage.example.com/resumes/tampered?token=zzz',
+      })
+    )
+  })
+
+  test('candidate cannot modify resumeFileName while withdrawing', async () => {
+    const f = await seedScenario({ appStatus: 'applied' })
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), 'applications', f.appA), {
+        resumeFileUrl: 'https://storage.example.com/resumes/x?token=abc', resumeFileName: 'resume.pdf',
+      })
+    })
+    const db = testEnv.authenticatedContext(f.candA).firestore()
+    await assertFails(updateDoc(doc(db, 'applications', f.appA), { status: 'withdrawn', resumeFileName: 'tampered.pdf' }))
   })
 })
 

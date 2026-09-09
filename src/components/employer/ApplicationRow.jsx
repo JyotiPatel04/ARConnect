@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CalendarClock, CheckCircle2, MessageCircle, Pencil, Sparkles, XCircle } from 'lucide-react'
+import { CalendarClock, CheckCircle2, FileText, MessageCircle, Pencil, Sparkles, XCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { APPLICATION_STATUSES } from '../../services/employerApplicationService'
 import { STATUS_LABELS as INTERVIEW_STATUS_LABELS } from '../../services/interviewService'
@@ -152,6 +152,23 @@ export default function ApplicationRow({
           <Button size="sm" variant="secondary" icon={MessageCircle} disabled={messaging} onClick={handleMessage}>
             Message
           </Button>
+          {/* Only shown when this application actually carries a resume
+              reference (see applicationService.applyToJob) -- an
+              application from before this existed, or from a candidate who
+              never uploaded one, simply shows no link, not a broken one.
+              A real <a> (not a Button + onClick) so native new-tab/right-
+              click/middle-click behavior all work as expected. */}
+          {application.resumeFileUrl && (
+            <a
+              href={application.resumeFileUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              title={application.resumeFileName || 'View resume'}
+              className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-navy-800 shadow-soft transition-colors duration-150 hover:border-slate-300"
+            >
+              <FileText size={14} strokeWidth={2.25} /> View Resume
+            </a>
+          )}
           {/* Phase 12 fix: a withdrawn application has nothing left to
               interview for — scheduling a NEW interview is hidden, same
               pattern as the status dropdown below. An interview scheduled

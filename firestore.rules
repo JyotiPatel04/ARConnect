@@ -137,6 +137,21 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/jobs/$(jobId)).data;
     }
 
+    // Reads the candidate's own candidateProfiles doc for cross-checking
+    // applications.create's resumeFileUrl/resumeFileName against it (see
+    // below) — same exists-check-then-get shape as jobPostCountFor(),
+    // since a candidate may not have created a candidateProfiles doc (or
+    // uploaded a resume) at all. Returns {} rather than null when absent,
+    // so .get(key, default) chains safely either way. This does NOT grant
+    // read access to candidateProfiles itself — get()/exists() inside
+    // rules bypass that collection's own read rule by design, same as
+    // every other xFor() helper in this file.
+    function candidateProfileFor(candidateId) {
+      return exists(/databases/$(database)/documents/candidateProfiles/$(candidateId))
+        ? get(/databases/$(database)/documents/candidateProfiles/$(candidateId)).data
+        : {};
+    }
+
     // Reads the caller's own job-posting counter (see jobPostCounters
     // below) — 0 if they've never posted a job yet. exists() has to be
     // checked first: get() on a path with no document throws, rather than
@@ -336,6 +351,18 @@ service cloud.firestore {
       // longer receive new applications — this was never actually
       // enforced anywhere before Phase 9 added admin job moderation, so
       // it's a genuine tightening, not a pre-existing guarantee.
+      //
+      // resumeFileUrl/resumeFileName (optional — a candidate may not have
+      // uploaded a resume) get the exact same treatment: whatever the
+      // client sends must match the caller's OWN candidateProfiles doc
+      // (candidateProfileFor(), a get() the client can't influence) —
+      // never a bare claim. This is what makes it structurally impossible
+      // for a candidate to attach a resume that isn't genuinely theirs to
+      // an application, the same jobFor()-style trust pattern as every
+      // other denormalized field here. Employer read access falls out of
+      // the existing read rule above with no change needed there: once
+      // this is on the document, the employer who already legitimately
+      // reads this application (and no one else) reads it too.
       allow create: if isSignedIn()
         && isNotSuspended()
         && jobFor(request.resource.data.jobId).status == 'active'
@@ -346,7 +373,9 @@ service cloud.firestore {
         && request.resource.data.jobTitle == jobFor(request.resource.data.jobId).title
         && request.resource.data.companyName == jobFor(request.resource.data.jobId).companyName
         && request.resource.data.candidateName == callerProfile().full_name
-        && request.resource.data.candidateEmail == callerProfile().email;
+        && request.resource.data.candidateEmail == callerProfile().email
+        && request.resource.data.get('resumeFileUrl', null) == candidateProfileFor(request.auth.uid).get('resumeFileUrl', null)
+        && request.resource.data.get('resumeFileName', null) == candidateProfileFor(request.auth.uid).get('resumeFileName', null);
 
       // The owning employer may change status (+ updatedAt) — every other
       // field, including candidateId/jobId/employerId, is checked
@@ -382,6 +411,8 @@ service cloud.firestore {
           && request.resource.data.jobTitle == resource.data.jobTitle
           && request.resource.data.companyName == resource.data.companyName
           && request.resource.data.appliedAt == resource.data.appliedAt
+          && request.resource.data.get('resumeFileUrl', null) == resource.data.get('resumeFileUrl', null)
+          && request.resource.data.get('resumeFileName', null) == resource.data.get('resumeFileName', null)
         )
         ||
         (
@@ -405,6 +436,8 @@ service cloud.firestore {
           && request.resource.data.jobTitle == resource.data.jobTitle
           && request.resource.data.companyName == resource.data.companyName
           && request.resource.data.appliedAt == resource.data.appliedAt
+          && request.resource.data.get('resumeFileUrl', null) == resource.data.get('resumeFileUrl', null)
+          && request.resource.data.get('resumeFileName', null) == resource.data.get('resumeFileName', null)
         )
       );
 

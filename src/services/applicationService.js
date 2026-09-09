@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { createNotification } from './notificationService'
+import { getMyProfile as getMyCandidateProfile } from './candidateProfileService'
 
 const applicationsRef = collection(db, 'applications')
 
@@ -40,6 +41,18 @@ export async function applyToJob({ job, candidateId, candidateName, candidateEma
   const id = applicationDocId(candidateId, job.id)
   const ref = doc(db, 'applications', id)
 
+  // Copies the candidate's CURRENT resume reference onto the application —
+  // never uploads or duplicates the actual file, just the same
+  // getDownloadURL() link already sitting on their own candidateProfiles
+  // doc (see resumeService.js). null when no resume has been uploaded,
+  // same convention candidateProfiles itself already uses. The security
+  // rule independently re-verifies this matches the caller's own profile
+  // (see firestore.rules' candidateProfileFor()), so this read is for
+  // building the write payload, not a trust boundary on its own.
+  const candidateProfile = await getMyCandidateProfile(candidateId)
+  const resumeFileUrl = candidateProfile?.resumeFileUrl || null
+  const resumeFileName = candidateProfile?.resumeFileName || null
+
   try {
     // Batched so the application is created and the job's applicationCount
     // is incremented atomically — that counter is what lets the employer
@@ -59,6 +72,8 @@ export async function applyToJob({ job, candidateId, candidateName, candidateEma
       jobTitle: job.title,
       companyName: job.companyName,
       status: 'applied',
+      resumeFileUrl,
+      resumeFileName,
       appliedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     })
